@@ -253,27 +253,9 @@ const App: React.FC = () => {
     });
 
     useEffect(() => {
-      const fetchData = async () => {
-        // Fetch videos and their authors from the database
-        const { data: videos, error } = await supabase
-          .from('videos')
-          .select('*, profile:profiles(username, avatar_url)') // This joins the profiles table
-          .eq('status', 'approved')
-          .order('upload_date', { ascending: false });
-        
-        if (error) {
-          console.error('Error fetching videos:', error);
-        } else {
-          // You may need to adapt the data structure slightly to match the 'profile' join
-          setVideos(videos as any);
-        }
-      };
-      fetchData();
-
         // Detect user locale and set currency info
         const info = getCurrencyInfoForLocale(navigator.language);
         setCurrencyInfo(info);
-
     }, []);
 
     useEffect(() => {
@@ -367,24 +349,23 @@ const App: React.FC = () => {
         );
     }, [currentUser, tasks, taskSettings]);
 
-    const handleLogin = async () => {
-        const { error } = await supabase.auth.signInWithPassword({ email: 'test@test.com', password: 'password' });
-        if (error) {
-            console.error('Error logging in:', error);
-        } else {
-            setIsLoggedIn(true);
-            setActiveView('feed');
-        }
+    const handleLogin = () => {
+        // Use mock data for login
+        const user = mockApi.mockUser;
+        setCurrentUser(user);
+        setUsers(mockApi.mockUsers);
+        setVideos(mockApi.mockVideos);
+        setLiveStreams(mockApi.mockLiveStreams);
+        setConversations(mockApi.mockConversations);
+        setPayoutRequests(mockApi.mockPayoutRequests);
+        setCreatorApplications(mockApi.mockCreatorApplications);
+        setIsLoggedIn(true);
+        setActiveView('feed');
     };
 
-    const handleLogout = async () => {
-        const { error } = await supabase.auth.signOut();
-        if (error) {
-            console.error('Error logging out:', error);
-        } else {
-            setCurrentUser(null);
-            setIsLoggedIn(false);
-        }
+    const handleLogout = () => {
+        setCurrentUser(null);
+        setIsLoggedIn(false);
     };
 
     const handleNavigate = (view: View) => {
