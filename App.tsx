@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 // FIX: Added UploadSource to the import list from types.ts to support different upload methods.
 import { User, Video, LiveStream, WalletTransaction, Conversation, ChatMessage, Comment, PayoutRequest, MonetizationSettings, UploadSource, CreatorApplication, CoinPack, SavedPaymentMethod, DailyRewardSettings, Ad, AdSettings, Task, TaskSettings } from './types';
 import { supabase } from './services/supabase';
-// import { mockUser, mockUsers, mockVideos, mockLiveStreams, mockConversations, systemUser, mockPayoutRequests, mockCreatorApplications, mockAds, mockTasks } from './services/mockApi';
+import { mockUser, mockUsers, mockVideos, mockLiveStreams, mockConversations, systemUser, mockPayoutRequests, mockCreatorApplications, mockAds, mockTasks } from './services/mockApi';
 import { getCurrencyInfoForLocale, CurrencyInfo } from './utils/currency';
 import { CurrencyContext } from './contexts/CurrencyContext';
 
@@ -1263,7 +1263,7 @@ const App: React.FC = () => {
 
     return (
         <CurrencyContext.Provider value={formatWithConversion}>
-            <div className="h-[100dvh] w-full max-w-lg mx-auto bg-black font-sans shadow-2xl overflow-hidden relative">
+            <div className="h-[100dvh] w-full max-w-lg mx-auto bg-black font-sans shadow-2xl overflow-hidden relative bg-zinc-900 overscroll-y-none">
                 {successMessage && <SuccessToast message={successMessage} />}
 
                 <main className="h-full w-full">
