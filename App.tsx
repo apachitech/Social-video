@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 // FIX: Added UploadSource to the import list from types.ts to support different upload methods.
 import { User, Video, LiveStream, WalletTransaction, Conversation, ChatMessage, Comment, PayoutRequest, MonetizationSettings, UploadSource, CreatorApplication, CoinPack, SavedPaymentMethod, DailyRewardSettings, Ad, AdSettings, Task, TaskSettings } from './types';
-import { mockUser, mockUsers, mockVideos, mockLiveStreams, mockConversations, systemUser, mockPayoutRequests, mockCreatorApplications, mockAds, mockTasks } from './services/mockApi';
+import { supabase } from './services/supabase';
+// import { mockUser, mockUsers, mockVideos, mockLiveStreams, mockConversations, systemUser, mockPayoutRequests, mockCreatorApplications, mockAds, mockTasks } from './services/mockApi';
 import { getCurrencyInfoForLocale, CurrencyInfo } from './utils/currency';
 import { CurrencyContext } from './contexts/CurrencyContext';
 
@@ -105,12 +106,12 @@ const defaultTaskSettings: TaskSettings = {
 const App: React.FC = () => {
     const [isLoggedIn, setIsLoggedIn] = useState(false);
     const [currentUser, setCurrentUser] = useState<User | null>(null);
-    const [users, setUsers] = useState<User[]>(mockUsers);
+    const [users, setUsers] = useState<User[]>([]);
     const [videos, setVideos] = useState<Video[]>([]);
-    const [liveStreams, setLiveStreams] = useState<LiveStream[]>(mockLiveStreams);
-    const [conversations, setConversations] = useState<Conversation[]>(mockConversations);
-    const [payoutRequests, setPayoutRequests] = useState<PayoutRequest[]>(mockPayoutRequests);
-    const [creatorApplications, setCreatorApplications] = useState<CreatorApplication[]>(mockCreatorApplications);
+    const [liveStreams, setLiveStreams] = useState<LiveStream[]>([]);
+    const [conversations, setConversations] = useState<Conversation[]>([]);
+    const [payoutRequests, setPayoutRequests] = useState<PayoutRequest[]>([]);
+    const [creatorApplications, setCreatorApplications] = useState<CreatorApplication[]>([]);
     
     const [activeView, setActiveView] = useState<View>('feed');
     const [previousView, setPreviousView] = useState<View>('feed');
@@ -252,19 +253,23 @@ const App: React.FC = () => {
     });
 
     useEffect(() => {
-        const loggedIn = sessionStorage.getItem('isLoggedIn') === 'true';
-        if (loggedIn) {
-            setCurrentUser(mockUser);
-            setVideos(mockVideos);
-            setIsLoggedIn(true);
-
-            const lastClaimed = localStorage.getItem('lastRewardClaim');
-            const today = new Date().toISOString().split('T')[0];
-            if (dailyRewardSettings.isEnabled && lastClaimed !== today) {
-                setTimeout(() => setIsDailyRewardOpen(true), 1000);
-            }
-        }
+      const fetchData = async () => {
+        // Fetch videos and their authors from the database
+        const { data: videos, error } = await supabase
+          .from('videos')
+          .select('*, profile:profiles(username, avatar_url)') // This joins the profiles table
+          .eq('status', 'approved')
+          .order('upload_date', { ascending: false });
         
+        if (error) {
+          console.error('Error fetching videos:', error);
+        } else {
+          // You may need to adapt the data structure slightly to match the 'profile' join
+          setVideos(videos as any);
+        }
+      };
+      fetchData();
+
         // Detect user locale and set currency info
         const info = getCurrencyInfoForLocale(navigator.language);
         setCurrencyInfo(info);
@@ -362,18 +367,24 @@ const App: React.FC = () => {
         );
     }, [currentUser, tasks, taskSettings]);
 
-    const handleLogin = () => {
-        sessionStorage.setItem('isLoggedIn', 'true');
-        setCurrentUser(mockUser);
-        setVideos(mockVideos);
-        setIsLoggedIn(true);
-        setActiveView('feed');
+    const handleLogin = async () => {
+        const { error } = await supabase.auth.signInWithPassword({ email: 'test@test.com', password: 'password' });
+        if (error) {
+            console.error('Error logging in:', error);
+        } else {
+            setIsLoggedIn(true);
+            setActiveView('feed');
+        }
     };
 
-    const handleLogout = () => {
-        sessionStorage.removeItem('isLoggedIn');
-        setCurrentUser(null);
-        setIsLoggedIn(false);
+    const handleLogout = async () => {
+        const { error } = await supabase.auth.signOut();
+        if (error) {
+            console.error('Error logging out:', error);
+        } else {
+            setCurrentUser(null);
+            setIsLoggedIn(false);
+        }
     };
 
     const handleNavigate = (view: View) => {
