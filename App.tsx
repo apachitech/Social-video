@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 // FIX: Added UploadSource to the import list from types.ts to support different upload methods.
 import { User, Video, LiveStream, WalletTransaction, Conversation, ChatMessage, Comment, PayoutRequest, MonetizationSettings, UploadSource, CreatorApplication, CoinPack, SavedPaymentMethod, DailyRewardSettings, Ad, AdSettings, Task, TaskSettings } from './types';
-import { supabase } from './services/supabase';
 import * as mockApi from './services/mockApi';
 import { getCurrencyInfoForLocale, CurrencyInfo } from './utils/currency';
 import { CurrencyContext } from './contexts/CurrencyContext';
