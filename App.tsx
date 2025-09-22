@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 // FIX: Added UploadSource to the import list from types.ts to support different upload methods.
 import { User, Video, LiveStream, WalletTransaction, Conversation, ChatMessage, Comment, PayoutRequest, MonetizationSettings, UploadSource, CreatorApplication, CoinPack, SavedPaymentMethod, DailyRewardSettings, Ad, AdSettings, Task, TaskSettings } from './types';
 import { supabase } from './services/supabase';
-import { mockUser, mockUsers, mockVideos, mockLiveStreams, mockConversations, systemUser, mockPayoutRequests, mockCreatorApplications, mockAds, mockTasks } from './services/mockApi';
+import * as mockApi from './services/mockApi';
 import { getCurrencyInfoForLocale, CurrencyInfo } from './utils/currency';
 import { CurrencyContext } from './contexts/CurrencyContext';
 
@@ -203,10 +203,10 @@ const App: React.FC = () => {
     const [ads, setAds] = useState<Ad[]>(() => {
         try {
             const saved = localStorage.getItem('ads');
-            return saved ? JSON.parse(saved) : mockAds;
+            return saved ? JSON.parse(saved) : mockApi.mockAds;
         } catch (error) {
             console.error("Could not parse ads from localStorage", error);
-            return mockAds;
+            return mockApi.mockAds;
         }
     });
 
@@ -235,10 +235,10 @@ const App: React.FC = () => {
     const [tasks, setTasks] = useState<Task[]>(() => {
         try {
             const saved = localStorage.getItem('tasks');
-            return saved ? JSON.parse(saved) : mockTasks;
+            return saved ? JSON.parse(saved) : mockApi.mockTasks;
         } catch (error) {
             console.error("Could not parse tasks from localStorage", error);
-            return mockTasks;
+            return mockApi.mockTasks;
         }
     });
 
