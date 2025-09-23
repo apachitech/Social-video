@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 // FIX: Added UploadSource to the import list from types.ts to support different upload methods.
 import { User, Video, LiveStream, WalletTransaction, Conversation, ChatMessage, Comment, PayoutRequest, MonetizationSettings, UploadSource, CreatorApplication, CoinPack, SavedPaymentMethod, DailyRewardSettings, Ad, AdSettings, Task, TaskSettings } from './types';
+import { mockUser, systemUser } from './services/mockApi';
 import { supabase } from './services/supabase';
-import * as mockApi from './services/mockApi';
 import { getCurrencyInfoForLocale, CurrencyInfo } from './utils/currency';
 import { CurrencyContext } from './contexts/CurrencyContext';
 
@@ -42,8 +42,6 @@ import TasksView from './components/views/TasksView';
 import WatchAdModal from './components/WatchAdModal';
 
 export type View = 'feed' | 'live' | 'inbox' | 'profile' | 'wallet' | 'settings' | 'purchase' | 'admin' | 'creatorDashboard' | 'manageAccount' | 'changePassword' | 'helpCenter' | 'termsOfService' | 'becomeCreator' | 'paymentMethods' | 'tasks';
-
-const API_URL = 'https://vidora-3dvn.onrender.com/api/v1';
 
 const defaultMonetizationSettings: MonetizationSettings = {
     currencySymbol: '$',
@@ -203,10 +201,10 @@ const App: React.FC = () => {
     const [ads, setAds] = useState<Ad[]>(() => {
         try {
             const saved = localStorage.getItem('ads');
-            return saved ? JSON.parse(saved) : mockApi.mockAds;
+            return saved ? JSON.parse(saved) : [];
         } catch (error) {
             console.error("Could not parse ads from localStorage", error);
-            return mockApi.mockAds;
+            return [];
         }
     });
 
@@ -235,10 +233,10 @@ const App: React.FC = () => {
     const [tasks, setTasks] = useState<Task[]>(() => {
         try {
             const saved = localStorage.getItem('tasks');
-            return saved ? JSON.parse(saved) : mockApi.mockTasks;
+            return saved ? JSON.parse(saved) : [];
         } catch (error) {
             console.error("Could not parse tasks from localStorage", error);
-            return mockApi.mockTasks;
+            return [];
         }
     });
 
@@ -253,23 +251,34 @@ const App: React.FC = () => {
     });
 
     useEffect(() => {
-      const fetchData = async () => {
-        // Fetch videos and their authors from the database
-        const { data: videos, error } = await supabase
-          .from('videos')
-          .select('*, profile:profiles(username, avatar_url)') // This joins the profiles table
-          .eq('status', 'approved')
-          .order('upload_date', { ascending: false });
-        
-        if (error) {
-          console.error('Error fetching videos:', error);
-        } else {
-          // You may need to adapt the data structure slightly to match the 'profile' join
-          setVideos(videos as any);
-        }
-      };
-      fetchData();
+        const fetchVideos = async () => {
+            const { data: videos, error } = await supabase
+              .from('videos')
+              .select('*, user:users(*)') // This joins the users table
+              .eq('status', 'approved')
+              .order('upload_date', { ascending: false });
+            
+            if (error) {
+              console.error('Error fetching videos:', error);
+            } else {
+              setVideos(videos as any);
+            }
+        };
 
+        fetchVideos();
+
+        const loggedIn = sessionStorage.getItem('isLoggedIn') === 'true';
+        if (loggedIn) {
+            setCurrentUser(mockUser);
+            setIsLoggedIn(true);
+
+            const lastClaimed = localStorage.getItem('lastRewardClaim');
+            const today = new Date().toISOString().split('T')[0];
+            if (dailyRewardSettings.isEnabled && lastClaimed !== today) {
+                setTimeout(() => setIsDailyRewardOpen(true), 1000);
+            }
+        }
+        
         // Detect user locale and set currency info
         const info = getCurrencyInfoForLocale(navigator.language);
         setCurrencyInfo(info);
@@ -367,24 +376,17 @@ const App: React.FC = () => {
         );
     }, [currentUser, tasks, taskSettings]);
 
-    const handleLogin = async () => {
-        const { error } = await supabase.auth.signInWithPassword({ email: 'test@test.com', password: 'password' });
-        if (error) {
-            console.error('Error logging in:', error);
-        } else {
-            setIsLoggedIn(true);
-            setActiveView('feed');
-        }
+    const handleLogin = () => {
+        sessionStorage.setItem('isLoggedIn', 'true');
+        setCurrentUser(mockUser);
+        setIsLoggedIn(true);
+        setActiveView('feed');
     };
 
-    const handleLogout = async () => {
-        const { error } = await supabase.auth.signOut();
-        if (error) {
-            console.error('Error logging out:', error);
-        } else {
-            setCurrentUser(null);
-            setIsLoggedIn(false);
-        }
+    const handleLogout = () => {
+        sessionStorage.removeItem('isLoggedIn');
+        setCurrentUser(null);
+        setIsLoggedIn(false);
     };
 
     const handleNavigate = (view: View) => {
@@ -441,27 +443,47 @@ const App: React.FC = () => {
         handleCloseUpload();
 
         if (source.type === 'file') {
+            const file = source.data;
+            const fileName = `${currentUser.id}/${Date.now()}`;
+            
             showSuccessToast('Uploading your video...');
-            const formData = new FormData();
-            formData.append('video', source.data);
-            formData.append('description', description);
+            
+            // 1. Upload the file to Supabase Storage
+            const { error: uploadError } = await supabase.storage
+              .from('media') // The name of your bucket
+              .upload(fileName, file);
 
-            try {
-                const response = await fetch(`${API_URL}/videos/upload`, {
-                    method: 'POST',
-                    body: formData,
-                });
+            if (uploadError) {
+              console.error('Error uploading video:', uploadError);
+              showSuccessToast('Error: Could not upload video.');
+              return;
+            }
 
-                if (!response.ok) {
-                    throw new Error('Upload failed');
-                }
+            // 2. Get the public URL of the uploaded file
+            const { data } = supabase.storage
+              .from('media')
+              .getPublicUrl(fileName);
+            
+            const publicUrl = data.publicUrl;
 
-                const newVideo: Video = await response.json();
-                setVideos(prev => [newVideo, ...prev]);
+            // 3. Save the video metadata to your database
+            const { data: newVideo, error: dbError } = await supabase
+              .from('videos')
+              .insert({
+                user_id: currentUser.id,
+                description,
+                video_url: publicUrl,
+                thumbnail_url: '...' // Generate this in a real app
+              })
+              .select('*, user:users(*)')
+              .single();
+            
+            if (dbError) {
+                console.error('Error saving video to DB:', dbError);
+                showSuccessToast('Error: Could not save video.');
+            } else if (newVideo) {
+                setVideos(prev => [newVideo as any, ...prev]);
                 showSuccessToast('Video uploaded successfully!');
-            } catch (error) {
-                console.error('Error uploading video:', error);
-                showSuccessToast('Error: Could not upload video.');
             }
         } else { // source.type === 'url'
             showSuccessToast('Embedding your video...');
@@ -501,31 +523,35 @@ const App: React.FC = () => {
         const videoId = activeVideoForComments.id;
 
         try {
-            const response = await fetch(`${API_URL}/videos/${videoId}/comments`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text: commentText, userId: currentUser.id }),
-            });
+            const { data: newComment, error } = await supabase
+                .from('comments')
+                .insert({
+                    text: commentText,
+                    user_id: currentUser.id,
+                    video_id: videoId,
+                })
+                .select('*, user:users(*)')
+                .single();
 
-            if (!response.ok) throw new Error('Failed to post comment');
+            if (error) throw error;
             
-            const newComment: Comment = await response.json();
-            
-            const updatedVideos = videos.map(v => {
-                if (v.id === videoId) {
-                    const updatedVideo = {
-                        ...v,
-                        comments: v.comments + 1,
-                        commentsData: [newComment, ...v.commentsData],
-                    };
-                    // Also update the video in the modal state to show the new comment instantly
-                    setActiveVideoForComments(updatedVideo);
-                    return updatedVideo;
-                }
-                return v;
-            });
+            if (newComment) {
+                const updatedVideos = videos.map(v => {
+                    if (v.id === videoId) {
+                        const updatedVideo = {
+                            ...v,
+                            comments: v.comments + 1,
+                            commentsData: [newComment as any, ...v.commentsData],
+                        };
+                        // Also update the video in the modal state to show the new comment instantly
+                        setActiveVideoForComments(updatedVideo);
+                        return updatedVideo;
+                    }
+                    return v;
+                });
 
-            setVideos(updatedVideos);
+                setVideos(updatedVideos);
+            }
 
         } catch (error) {
             console.error('Error adding comment:', error);
@@ -1263,7 +1289,7 @@ const App: React.FC = () => {
 
     return (
         <CurrencyContext.Provider value={formatWithConversion}>
-            <div className="h-[100dvh] w-full max-w-lg mx-auto bg-black font-sans shadow-2xl overflow-hidden relative bg-zinc-900 overscroll-y-none">
+            <div className="h-[100dvh] w-full max-w-lg mx-auto bg-black font-sans shadow-2xl overflow-hidden relative">
                 {successMessage && <SuccessToast message={successMessage} />}
 
                 <main className="h-full w-full">
