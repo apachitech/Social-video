@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 // FIX: Added UploadSource to the import list from types.ts to support different upload methods.
 import { User, Video, LiveStream, WalletTransaction, Conversation, ChatMessage, Comment, PayoutRequest, MonetizationSettings, UploadSource, CreatorApplication, CoinPack, SavedPaymentMethod, DailyRewardSettings, Ad, AdSettings, Task, TaskSettings } from './types';
-import { mockUser, systemUser } from './services/mockApi';
+import { systemUser } from './services/mockApi';
 import { supabase } from './services/supabase';
 import { getCurrencyInfoForLocale, CurrencyInfo } from './utils/currency';
 import { CurrencyContext } from './contexts/CurrencyContext';
@@ -102,7 +102,7 @@ const defaultTaskSettings: TaskSettings = {
 
 
 const App: React.FC = () => {
-    const [isLoggedIn, setIsLoggedIn] = useState(false);
+    // Auth state is now handled by Supabase, so isLoggedIn is derived from currentUser
     const [currentUser, setCurrentUser] = useState<User | null>(null);
     const [users, setUsers] = useState<User[]>([]);
     const [videos, setVideos] = useState<Video[]>([]);
@@ -251,38 +251,64 @@ const App: React.FC = () => {
     });
 
     useEffect(() => {
-        const fetchVideos = async () => {
+        // --- 1. SETUP AUTH LISTENER ---
+        // Listen for authentication state changes (login, logout)
+        const { data: authListener } = supabase.auth.onAuthStateChange(
+            async (event, session) => {
+                const user = session?.user ?? null;
+                // The user object from Supabase Auth doesn't have our custom profile data
+                // so we fetch it from the 'profiles' table.
+                if (user) {
+                    const { data: profile, error } = await supabase
+                        .from('profiles')
+                        .select('*')
+                        .eq('id', user.id)
+                        .single();
+                    
+                    if (error) {
+                        console.error('Error fetching user profile:', error);
+                        setCurrentUser(null);
+                    } else {
+                        setCurrentUser(profile as User);
+                        // Check for daily reward on login
+                        const lastClaimed = localStorage.getItem('lastRewardClaim');
+                        const today = new Date().toISOString().split('T')[0];
+                        if (dailyRewardSettings.isEnabled && lastClaimed !== today) {
+                            setTimeout(() => setIsDailyRewardOpen(true), 1000);
+                        }
+                    }
+                } else {
+                    setCurrentUser(null);
+                }
+            }
+        );
+
+        // --- 2. FETCH INITIAL DATA ---
+        const fetchData = async () => {
             const { data: videos, error } = await supabase
               .from('videos')
-              .select('*, user:users(*)') // This joins the users table
-              .eq('status', 'approved')
+              .select('*, profile:profiles(username, avatar_url)') // Correctly join profiles table
               .order('upload_date', { ascending: false });
             
             if (error) {
               console.error('Error fetching videos:', error);
             } else {
-              setVideos(videos as any);
+              // The join returns `profile` object, let's map it to `user` to match the component's expectation
+              const formattedVideos = videos.map(v => ({...v, user: v.profile}));
+              setVideos(formattedVideos as any);
             }
         };
 
-        fetchVideos();
-
-        const loggedIn = sessionStorage.getItem('isLoggedIn') === 'true';
-        if (loggedIn) {
-            setCurrentUser(mockUser);
-            setIsLoggedIn(true);
-
-            const lastClaimed = localStorage.getItem('lastRewardClaim');
-            const today = new Date().toISOString().split('T')[0];
-            if (dailyRewardSettings.isEnabled && lastClaimed !== today) {
-                setTimeout(() => setIsDailyRewardOpen(true), 1000);
-            }
-        }
+        fetchData();
         
         // Detect user locale and set currency info
         const info = getCurrencyInfoForLocale(navigator.language);
         setCurrencyInfo(info);
 
+        // --- 3. CLEANUP ---
+        return () => {
+            authListener.subscription.unsubscribe();
+        };
     }, []);
 
     useEffect(() => {
@@ -376,17 +402,19 @@ const App: React.FC = () => {
         );
     }, [currentUser, tasks, taskSettings]);
 
-    const handleLogin = () => {
-        sessionStorage.setItem('isLoggedIn', 'true');
-        setCurrentUser(mockUser);
-        setIsLoggedIn(true);
+    const handleLogin = async () => {
+        // This function is now just for showing the AuthView.
+        // The actual login logic will be handled inside AuthView using Supabase.
+        // For simplicity, we'll just navigate to the feed after a successful login
+        // which is handled by the onAuthStateChange listener.
         setActiveView('feed');
     };
 
-    const handleLogout = () => {
-        sessionStorage.removeItem('isLoggedIn');
-        setCurrentUser(null);
-        setIsLoggedIn(false);
+    const handleLogout = async () => {
+        const { error } = await supabase.auth.signOut();
+        if (error) {
+            console.error('Error logging out:', error);
+        }
     };
 
     const handleNavigate = (view: View) => {
@@ -470,13 +498,13 @@ const App: React.FC = () => {
             const { data: newVideo, error: dbError } = await supabase
               .from('videos')
               .insert({
-                user_id: currentUser.id,
+                user_id: currentUser.id, // This should now be the UUID from Supabase Auth
                 description,
                 video_url: publicUrl,
-                thumbnail_url: '...' // Generate this in a real app
+                thumbnail_url: '...' // Placeholder
               })
-              .select('*, user:users(*)')
-              .single();
+              .select('*, profile:profiles(username, avatar_url)') // Re-fetch with profile data
+              .single(); // We expect one record back
             
             if (dbError) {
                 console.error('Error saving video to DB:', dbError);
@@ -530,18 +558,20 @@ const App: React.FC = () => {
                     user_id: currentUser.id,
                     video_id: videoId,
                 })
-                .select('*, user:users(*)')
+                .select('*, profile:profiles(username, avatar_url)') // Join with profiles
                 .single();
 
             if (error) throw error;
             
             if (newComment) {
+                // Map the returned `profile` object to `user` for consistency
+                const formattedComment = {...newComment, user: newComment.profile};
                 const updatedVideos = videos.map(v => {
                     if (v.id === videoId) {
                         const updatedVideo = {
                             ...v,
                             comments: v.comments + 1,
-                            commentsData: [newComment as any, ...v.commentsData],
+                            commentsData: [formattedComment as any, ...v.commentsData],
                         };
                         // Also update the video in the modal state to show the new comment instantly
                         setActiveVideoForComments(updatedVideo);
@@ -1113,7 +1143,7 @@ const App: React.FC = () => {
     };
 
 
-    if (!isLoggedIn || !currentUser) {
+    if (!currentUser) {
         return <AuthView onLoginSuccess={handleLogin} siteName={siteName} />;
     }
 
