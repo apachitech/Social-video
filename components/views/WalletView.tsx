@@ -1,11 +1,11 @@
 import React from 'react';
-import { User, WalletTransaction, CoinPack } from '../../types';
+import { Wallet, WalletTransaction, CoinPack } from '../../types';
 import { ChevronLeftIcon, CoinIcon, PlusCircleIcon, GiftIcon, StarIcon, TasksIcon, ChevronRightIcon } from '../icons/Icons';
 import { useCurrency } from '../../contexts/CurrencyContext';
 import { View } from '../../App';
 
 interface WalletViewProps {
-  user: User;
+  wallet: Wallet | null;
   onBack: () => void;
   onNavigate: (view: View) => void;
   onNavigateToPurchase: (pack: CoinPack) => void;
@@ -50,8 +50,7 @@ const TransactionItem: React.FC<{ transaction: WalletTransaction }> = ({ transac
     );
 };
 
-const WalletView: React.FC<WalletViewProps> = ({ user, onBack, onNavigateToPurchase, coinPacks, onNavigate }) => {
-  const wallet = user.wallet;
+const WalletView: React.FC<WalletViewProps> = ({ wallet, onBack, onNavigateToPurchase, coinPacks, onNavigate }) => {
   const formatCurrency = useCurrency();
 
   if (!wallet) {

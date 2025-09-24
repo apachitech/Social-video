@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Conversation, User } from '../../types';
 import { ChevronLeftIcon, SendIcon, PaperclipIcon, EmojiIcon, CloseIcon } from '../icons/Icons';
-import { mockUser } from '../../services/mockApi';
 import EmojiPicker from '../EmojiPicker';
 
 interface ChatWindowViewProps {
@@ -10,6 +9,8 @@ interface ChatWindowViewProps {
   onSendMessage: (text: string, imageFile?: File) => void;
   onViewProfile: (user: User) => void;
 }
+
+const MOCK_CURRENT_USER_ID = 'u1'; // Placeholder until full auth is passed down
 
 const ChatWindowView: React.FC<ChatWindowViewProps> = ({ conversation, onBack, onSendMessage, onViewProfile }) => {
   const [newMessage, setNewMessage] = useState('');
@@ -33,7 +34,7 @@ const ChatWindowView: React.FC<ChatWindowViewProps> = ({ conversation, onBack, o
   // Typing indicator simulation
   useEffect(() => {
     const lastMessage = conversation.messages[conversation.messages.length - 1];
-    if (lastMessage && lastMessage.senderId !== mockUser.id) {
+    if (lastMessage && lastMessage.senderId !== MOCK_CURRENT_USER_ID) {
       setIsTyping(true);
       const timer = setTimeout(() => {
         setIsTyping(false);
@@ -111,7 +112,7 @@ const ChatWindowView: React.FC<ChatWindowViewProps> = ({ conversation, onBack, o
       
       <main className="flex-1 overflow-y-auto p-4 space-y-4">
         {conversation.messages.map((msg) => {
-          const isCurrentUser = msg.senderId === mockUser.id;
+          const isCurrentUser = msg.senderId === MOCK_CURRENT_USER_ID;
           return (
             <div key={msg.id} className={`flex items-end gap-2 ${isCurrentUser ? 'justify-end' : 'justify-start'}`}>
               {!isCurrentUser && (

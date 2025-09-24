@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Video, User, Ad } from '../types';
 import { HeartIcon, CommentIcon, ShareIcon, MusicIcon, PlayIcon, PauseIcon, FullScreenIcon, VolumeUpIcon, VolumeOffIcon, SettingsIcon } from './icons/Icons';
 import { getYouTubeEmbedUrl } from '../utils/videoUtils';
+import { supabase } from '../services/supabase';
 import AdBannerOverlay from './AdBannerOverlay';
 
 interface VideoPlayerProps {
@@ -29,8 +30,8 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, isActive, onOpenCommen
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const qualityMenuRef = useRef<HTMLDivElement>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [isLiked, setIsLiked] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(isActive);
+  const [isLiked, setIsLiked] = useState(currentUser.likedVideoIds?.includes(video.id) ?? false);
   const [showPlayPause, setShowPlayPause] = useState(false);
   const [isShared, setIsShared] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
@@ -138,8 +139,26 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, isActive, onOpenCommen
     setTimeout(() => setShowPlayPause(false), 800);
   };
   
-  const handleLike = () => {
-      setIsLiked(!isLiked);
+  const handleLike = async () => {
+      const currentlyLiked = isLiked;
+      // Optimistically update UI
+      setIsLiked(!currentlyLiked);
+
+      if (currentlyLiked) {
+          // Unlike
+          const { error } = await supabase.from('likes').delete().match({ user_id: currentUser.id, video_id: video.id });
+          if (error) {
+              console.error('Error unliking video:', error);
+              setIsLiked(true); // Revert on error
+          }
+      } else {
+          // Like
+          const { error } = await supabase.from('likes').insert({ user_id: currentUser.id, video_id: video.id });
+          if (error) {
+              console.error('Error liking video:', error);
+              setIsLiked(false); // Revert on error
+          }
+      }
   }
   
   const handleClickOnVideo = (e: React.MouseEvent<HTMLDivElement>) => {

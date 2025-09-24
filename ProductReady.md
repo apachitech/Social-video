@@ -36,13 +36,13 @@ This single step provisions your database, storage, authentication, and serverle
     -- Users Table (Supabase Auth handles this, but we create a public profile table)
     CREATE TABLE profiles (
         id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-        username TEXT UNIQUE NOT NULL,
+        username TEXT UNIQUE,
         avatar_url TEXT,
         bio TEXT,
         role TEXT DEFAULT 'user' NOT NULL,
         status TEXT DEFAULT 'active' NOT NULL,
         is_verified BOOLEAN DEFAULT false,
-        level INT DEFAULT 1,
+        level INT DEFAULT 1 NOT NULL,
         xp INT DEFAULT 0,
         streak_count INT DEFAULT 0
     );
@@ -50,12 +50,11 @@ This single step provisions your database, storage, authentication, and serverle
     -- Videos Table
     CREATE TABLE videos (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+        user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
         description TEXT,
         video_url TEXT NOT NULL,
         thumbnail_url TEXT,
         likes INT DEFAULT 0,
-        views INT DEFAULT 0,
         shares INT DEFAULT 0,
         status TEXT DEFAULT 'approved' NOT NULL,
         upload_date TIMESTAMPTZ DEFAULT now()
@@ -64,7 +63,7 @@ This single step provisions your database, storage, authentication, and serverle
     -- Comments Table
     CREATE TABLE comments (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+        user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
         video_id UUID REFERENCES videos(id) ON DELETE CASCADE,
         text TEXT NOT NULL,
         created_at TIMESTAMPTZ DEFAULT now()
@@ -73,23 +72,117 @@ This single step provisions your database, storage, authentication, and serverle
     -- Wallets & Transactions
     CREATE TABLE wallets (
         user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-        balance INT DEFAULT 0
+        balance INT DEFAULT 0 NOT NULL
     );
 
     CREATE TABLE transactions (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        wallet_user_id UUID REFERENCES wallets(user_id) ON DELETE CASCADE,
+        user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
         type TEXT NOT NULL,
         amount INT NOT NULL,
         description TEXT,
         timestamp TIMESTAMPTZ DEFAULT now()
     );
+
+    -- Reports Table
+    CREATE TABLE reports (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        reported_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
+        content_id TEXT NOT NULL,
+        content_type TEXT NOT NULL, -- 'video', 'user', or 'comment'
+        reason TEXT NOT NULL,
+        status TEXT DEFAULT 'pending' NOT NULL, -- 'pending', 'resolved', 'dismissed'
+        timestamp TIMESTAMPTZ DEFAULT now()
+    );
+
+    -- Payout Requests Table
+    CREATE TABLE payout_requests (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+        amount INT NOT NULL,
+        method TEXT NOT NULL,
+        payout_info TEXT NOT NULL,
+        status TEXT DEFAULT 'pending' NOT NULL, -- 'pending', 'approved', 'rejected'
+        request_date TIMESTAMPTZ DEFAULT now(),
+        processed_date TIMESTAMPTZ
+    );
+
+    -- Gifts Table
+    CREATE TABLE gifts (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        name TEXT NOT NULL,
+        price INT NOT NULL,
+        icon TEXT NOT NULL,
+        category TEXT DEFAULT 'Classic' NOT NULL,
+        is_active BOOLEAN DEFAULT true NOT NULL
+    );
+
+    -- Followers (Join Table)
+    CREATE TABLE followers (
+        follower_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+        following_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+        created_at TIMESTAMPTZ DEFAULT now(),
+        PRIMARY KEY (follower_id, following_id)
+    );
+
+    -- Likes (Join Table)
+    CREATE TABLE likes (
+        user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+        video_id UUID REFERENCES videos(id) ON DELETE CASCADE,
+        created_at TIMESTAMPTZ DEFAULT now(),
+        PRIMARY KEY (user_id, video_id)
+    );
+
+    -- Messages Table
+    CREATE TABLE messages (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        sender_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
+        receiver_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
+        text TEXT,
+        image_url TEXT,
+        created_at TIMESTAMPTZ DEFAULT now()
+    );
+
     ```
 
 5.  **Create a Storage Bucket:**
     *   Navigate to **Storage** in the Supabase dashboard.
     *   Click **"New bucket"**. Name it `media`.
     *   **Crucially, make this a public bucket** by toggling the "Public bucket" option. This allows users to view the videos and images you store here.
+
+---
+
+## Step 1.5: Automate Profile Creation
+
+To ensure every new user gets a corresponding entry in your public `profiles` table, you need to create a trigger in your database.
+
+1.  Navigate to **Database** > **Triggers** in your Supabase dashboard.
+2.  Click **"Create a new function"**.
+3.  Use the following SQL to define a function that inserts a new profile whenever a new user signs up in `auth.users`.
+
+```sql
+-- Function to create a profile for a new user
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.profiles (id, username, avatar_url)
+  VALUES (new.id, new.raw_user_meta_data->>'username', new.raw_user_meta_data->>'avatar_url');
+  RETURN new;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Function to create a wallet for a new user
+CREATE OR REPLACE FUNCTION public.handle_new_wallet()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.wallets (user_id, balance)
+  VALUES (new.id, 0);
+  RETURN new;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Don't forget to create the triggers in the Supabase Dashboard's "Database" -> "Triggers" section.
+```
 
 ---
 
@@ -218,3 +311,78 @@ Your Express backend is no longer needed; we will interact with Supabase directl
 ### You're Live!
 
 Your application is now running on a fully serverless, scalable, and integrated stack. By consolidating your services with Supabase, you've simplified your architecture, which makes it easier to maintain, secure, and build upon. The `backend` folder in your project is no longer needed for deployment.
+
+---
+
+## Step 4: Secure Your Database with Row Level Security (RLS)
+
+**This is the most critical step for a production application.** By default, your tables are open to anyone with the public `anon` key. RLS adds a security layer to your database to ensure users can only access data they are permitted to.
+
+Navigate to **SQL Editor** in your Supabase dashboard and run the following queries.
+
+```sql
+-- Helper function to get a user's role from their profile
+CREATE OR REPLACE FUNCTION get_my_role()
+RETURNS TEXT AS $$
+DECLARE
+  user_role TEXT;
+BEGIN
+  SELECT role INTO user_role FROM public.profiles WHERE id = auth.uid();
+  RETURN user_role;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 1. ENABLE RLS FOR ALL TABLES
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE videos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE comments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE wallets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE reports ENABLE ROW LEVEL SECURITY;
+ALTER TABLE followers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE likes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE payout_requests ENABLE ROW LEVEL SECURITY;
+
+-- 2. POLICIES FOR `profiles`
+-- Anyone can view profiles.
+CREATE POLICY "Allow public read access to profiles" ON profiles FOR SELECT USING (true);
+-- Users can update their own profile.
+CREATE POLICY "Allow users to update their own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
+-- Admins can do anything.
+CREATE POLICY "Allow admin full access" ON profiles FOR ALL USING (get_my_role() = 'admin');
+
+-- 3. POLICIES FOR `videos`
+-- Anyone can view approved videos.
+CREATE POLICY "Allow public read access to approved videos" ON videos FOR SELECT USING (status = 'approved');
+-- Any logged-in user can create a video.
+CREATE POLICY "Allow authenticated users to insert videos" ON videos FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+-- Users can update their own videos.
+CREATE POLICY "Allow users to update their own videos" ON videos FOR UPDATE USING (auth.uid() = user_id);
+
+-- 4. POLICIES FOR `comments`
+-- Anyone can read comments.
+CREATE POLICY "Allow public read access to comments" ON comments FOR SELECT USING (true);
+-- Any logged-in user can create a comment.
+CREATE POLICY "Allow authenticated users to insert comments" ON comments FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+-- Users can delete their own comments.
+CREATE POLICY "Allow users to delete their own comments" ON comments FOR DELETE USING (auth.uid() = user_id);
+
+-- 5. POLICIES FOR `wallets` & `transactions` (VERY IMPORTANT)
+-- Users can only see their own wallet and transactions.
+CREATE POLICY "Allow users to see their own wallet" ON wallets FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Allow users to see their own transactions" ON transactions FOR SELECT USING (auth.uid() = user_id);
+-- No one can update their own balance directly. This should be handled by secure Edge Functions.
+
+-- 6. POLICIES FOR `reports`
+-- Any logged-in user can create a report.
+CREATE POLICY "Allow authenticated users to create reports" ON reports FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+-- Admins and moderators can manage all reports.
+CREATE POLICY "Allow admins and mods to manage reports" ON reports FOR ALL USING (get_my_role() IN ('admin', 'moderator'));
+
+-- 7. POLICIES FOR `payout_requests`
+-- Users can manage their own payout requests.
+CREATE POLICY "Allow users to manage their own payout requests" ON payout_requests FOR ALL USING (auth.uid() = user_id);
+-- Admins can manage all payout requests.
+CREATE POLICY "Allow admins to manage all payout requests" ON payout_requests FOR ALL USING (get_my_role() = 'admin');
+```

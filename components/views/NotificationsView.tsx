@@ -2,7 +2,6 @@
 
 import React from 'react';
 import { Notification } from '../../types';
-import { mockNotifications } from '../../services/mockApi';
 // Fix: Correct import for Icons which is now created.
 import { ChevronLeftIcon } from '../icons/Icons';
 
@@ -44,6 +43,9 @@ const NotificationItem: React.FC<{ notification: Notification }> = ({ notificati
 };
 
 const NotificationsView: React.FC<NotificationsViewProps> = ({ onBack }) => {
+  // In a real app, notifications would be fetched from an API
+  const mockNotifications: Notification[] = [];
+
   return (
     <div className="h-full w-full bg-zinc-900 text-white flex flex-col">
        <header className="sticky top-0 bg-zinc-900 bg-opacity-80 backdrop-blur-sm z-10 flex items-center p-4 border-b border-zinc-800">

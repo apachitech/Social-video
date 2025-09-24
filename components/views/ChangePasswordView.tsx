@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { ChevronLeftIcon } from '../icons/Icons';
+import { supabase } from '../../services/supabase';
 
 interface ChangePasswordViewProps {
   onBack: () => void;
-  onChangePassword: (currentPassword: string, newPassword: string) => boolean;
+  showSuccessToast: (message: string) => void;
 }
 
-const ChangePasswordView: React.FC<ChangePasswordViewProps> = ({ onBack, onChangePassword }) => {
-  const [currentPassword, setCurrentPassword] = useState('');
+const ChangePasswordView: React.FC<ChangePasswordViewProps> = ({ onBack, showSuccessToast }) => {
+  // Supabase's updateUser doesn't require the current password.
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
@@ -15,10 +16,6 @@ const ChangePasswordView: React.FC<ChangePasswordViewProps> = ({ onBack, onChang
 
   const handleSubmit = () => {
     setError('');
-    if (!currentPassword || !newPassword || !confirmPassword) {
-      setError('All fields are required.');
-      return;
-    }
     if (newPassword !== confirmPassword) {
       setError('New passwords do not match.');
       return;
@@ -29,14 +26,22 @@ const ChangePasswordView: React.FC<ChangePasswordViewProps> = ({ onBack, onChang
     }
     
     setIsProcessing(true);
-    setTimeout(() => { // Simulate network delay
-        const success = onChangePassword(currentPassword, newPassword);
-        // if the call fails (e.g. wrong current password), stop processing
-        // The parent will show a toast with the error.
-        if (!success) {
+    const changePassword = async () => {
+        const { error } = await supabase.auth.updateUser({
+            password: newPassword
+        });
+
+        if (error) {
+            setError(error.message);
             setIsProcessing(false);
+        } else {
+            showSuccessToast('Password updated successfully!');
+            setTimeout(() => {
+                onBack();
+            }, 1500);
         }
-    }, 1000);
+    };
+    changePassword();
   };
 
   return (
@@ -50,17 +55,6 @@ const ChangePasswordView: React.FC<ChangePasswordViewProps> = ({ onBack, onChang
 
       <main className="flex-1 overflow-y-auto p-4">
         <div className="space-y-4">
-          <div>
-            <label htmlFor="current-password"
-                   className="block text-sm font-medium text-gray-400 mb-1">Current Password</label>
-            <input
-              id="current-password"
-              type="password"
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-              className="w-full p-3 bg-zinc-800 rounded-lg border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-pink-500"
-            />
-          </div>
           <div>
             <label htmlFor="new-password"
                    className="block text-sm font-medium text-gray-400 mb-1">New Password</label>

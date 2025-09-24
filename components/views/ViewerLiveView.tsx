@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { LiveStream, ChatMessage, User, Gift, Ad } from '../../types';
 import { CloseIcon, HeartIcon, SendIcon, EmojiIcon, GiftIcon, ShareIcon, CoinIcon, ChevronLeftIcon, PinIcon, PaperclipIcon, VolumeUpIcon, VolumeOffIcon, ShieldCheckIcon, BanUserIcon, TasksIcon, ChevronRightIcon } from '../icons/Icons';
-import { mockUser, mockGifts, mockUsers } from '../../services/mockApi';
+import { mockUser, mockUsers } from '../../services/mockApi';
+import { supabase } from '../../services/supabase';
 import SendGiftModal from '../SendGiftModal';
 import EmojiPicker from '../EmojiPicker';
 import { getYouTubeEmbedUrl } from '../../utils/videoUtils';
@@ -18,6 +19,7 @@ interface ViewerLiveViewProps {
   onViewProfile: (user: User) => void;
   bannerAds: Ad[];
   onBanStreamer: (streamerId: string) => void;
+  availableGifts: Gift[];
   hasIncompleteDailyTasks: boolean;
   onNavigate: (view: View) => void;
 }
@@ -45,7 +47,7 @@ const FloatingHeart: React.FC<{ onAnimationEnd: () => void }> = ({ onAnimationEn
     );
 };
 
-const ViewerLiveView: React.FC<ViewerLiveViewProps> = ({ stream, onBack, currentUser, onToggleFollow, onShareStream, onViewProfile, bannerAds, onBanStreamer, hasIncompleteDailyTasks, onNavigate }) => {
+const ViewerLiveView: React.FC<ViewerLiveViewProps> = ({ stream, onBack, currentUser, onToggleFollow, onShareStream, onViewProfile, bannerAds, onBanStreamer, availableGifts, hasIncompleteDailyTasks, onNavigate }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([
     { id: '1', senderId: stream.user.id, text: `Welcome to the stream!`, isRead: true, timestamp: '' },
   ]);
@@ -125,7 +127,7 @@ const ViewerLiveView: React.FC<ViewerLiveViewProps> = ({ stream, onBack, current
         setMessages(prev => [...prev.slice(-20), newMessage]);
       } else {
         const randomGift = mockGifts[Math.floor(Math.random() * 5)];
-        handleGiftFromOtherUser(randomUser, randomGift);
+        handleGiftEvent(randomUser, randomGift);
       }
     }, 3500);
     
@@ -661,7 +663,7 @@ const ViewerLiveView: React.FC<ViewerLiveViewProps> = ({ stream, onBack, current
 
         {isGiftModalOpen && (
             <SendGiftModal 
-                gifts={mockGifts}
+                gifts={availableGifts}
                 balance={localBalance}
                 onSend={handleSendGift}
                 onClose={() => setIsGiftModalOpen(false)}
