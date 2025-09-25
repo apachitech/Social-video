@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 // FIX: Added UploadSource to the import list from types.ts to support different upload methods.
 import { User, Video, LiveStream, WalletTransaction, Conversation, ChatMessage, Comment, PayoutRequest, MonetizationSettings, UploadSource, CreatorApplication, CoinPack, SavedPaymentMethod, DailyRewardSettings, Ad, AdSettings, Task, TaskSettings, Report, Wallet, Gift } from './types';
-import { systemUser } from './services/mockApi';
+import { systemUser, mockAds } from './services/mockApi';
 import { supabase } from './services/supabase';
 import { getCurrencyInfoForLocale, CurrencyInfo } from './utils/currency';
 import { CurrencyContext } from './contexts/CurrencyContext';
@@ -204,10 +204,13 @@ const App: React.FC = () => {
     const [ads, setAds] = useState<Ad[]>(() => {
         try {
             const saved = localStorage.getItem('ads');
-            return saved ? JSON.parse(saved) : [];
+            return saved ? JSON.parse(saved) : mockAds;
         } catch (error) {
             console.error("Could not parse ads from localStorage", error);
-            return [];
+            // If parsing fails, it's likely due to corrupted data.
+            // Clear the bad data and fall back to the default mock ads.
+            localStorage.removeItem('ads');
+            return mockAds;
         }
     });
 
