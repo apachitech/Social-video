@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, Video, Ad } from '../../types';
 import { View } from '../../App';
 import { SettingsIcon, GridIcon, CoinIcon, FlameIcon, StarIcon, BadgeIcon, AdminPanelIcon, ChevronLeftIcon, CreatorDashboardIcon, LiveIcon, TasksIcon, ChevronRightIcon } from '../icons/Icons';
@@ -48,10 +48,26 @@ const ProfileAdBanner: React.FC<{ ad: Ad }> = ({ ad }) => (
 );
 
 const ProfileView: React.FC<ProfileViewProps> = ({ user, currentUser, isOwnProfile, videos, onNavigate, onEditProfile, onBack, onToggleFollow, onGoLive, bannerAd, onShareProfile, onOpenProfileVideoFeed, onOpenProfileStats, onOpenLevelInfo, hasIncompleteDailyTasks }) => {
+  // Use local state for the displayed user to allow for optimistic updates
+  const [displayedUser, setDisplayedUser] = useState(user);
   const [activeTab, setActiveTab] = useState<'videos' | 'badges'>('videos');
   const formatCurrency = useCurrency();
-  const userVideos = videos.filter(v => v.user.id === user.id);
-  const isFollowing = currentUser.followingIds?.includes(user.id);
+  const userVideos = videos.filter(v => v.user.id === displayedUser.id);
+  const isFollowing = currentUser.followingIds?.includes(displayedUser.id);
+
+  useEffect(() => {
+    // If the user prop changes (e.g., navigating to a different profile), update the local state
+    setDisplayedUser(user);
+  }, [user]);
+
+  const handleFollowToggle = () => {
+    // Optimistically update the follower count for a better UX
+    setDisplayedUser(prevUser => ({
+      ...prevUser,
+      followers: (prevUser.followers || 0) + (isFollowing ? -1 : 1),
+    }));
+    onToggleFollow(displayedUser.id);
+  };
 
   return (
     <div className="h-full w-full bg-zinc-900 text-white overflow-y-auto pb-16">
@@ -69,7 +85,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({ user, currentUser, isOwnProfi
               className="flex items-center bg-zinc-800/80 backdrop-blur-sm px-3 py-1.5 rounded-full text-sm font-semibold hover:bg-zinc-700 transition-colors"
             >
               <CoinIcon className="w-5 h-5 text-yellow-400" />
-              <span className="ml-2">{user.wallet?.balance.toLocaleString()}</span>
+              <span className="ml-2">{currentUser.wallet?.balance.toLocaleString()}</span>
             </button>
             <button onClick={() => onNavigate('settings')}>
               <SettingsIcon />
@@ -82,32 +98,32 @@ const ProfileView: React.FC<ProfileViewProps> = ({ user, currentUser, isOwnProfi
       
       <div className="max-w-2xl mx-auto -mt-12 pt-12">
         <div className="flex flex-col items-center px-4">
-          <img src={user.avatarUrl} alt={user.username} className="w-24 h-24 rounded-full object-cover border-4 border-zinc-800" />
+          <img src={displayedUser.avatarUrl} alt={displayedUser.username} className="w-24 h-24 rounded-full object-cover border-4 border-zinc-800" />
           <div className="flex items-center gap-3 mt-3">
-             <h1 className="text-xl font-bold">@{user.username}</h1>
+             <h1 className="text-xl font-bold">@{displayedUser.username}</h1>
              <button onClick={onOpenLevelInfo} className="bg-gradient-to-br from-purple-600 to-indigo-600 px-3 py-1 rounded-full text-xs font-bold shadow-lg flex items-center gap-1.5 hover:opacity-90 transition-opacity">
                 <StarIcon className="w-3 h-3"/>
-                LVL {user.level || 1}
+                LVL {displayedUser.level || 1}
             </button>
           </div>
           
           <div className="flex items-center gap-2 mt-2 text-sm text-orange-400 bg-zinc-800 px-3 py-1 rounded-full">
               <FlameIcon />
-              <span>{user.streakCount}-day Streak</span>
+              <span>{displayedUser.streakCount}-day Streak</span>
           </div>
 
-          <p className="text-sm text-center text-gray-300 mt-3 max-w-sm">{user.bio}</p>
+          <p className="text-sm text-center text-gray-300 mt-3 max-w-sm">{displayedUser.bio}</p>
         </div>
 
         <div className="flex justify-center space-x-8 my-5">
-          <button onClick={() => onOpenProfileStats(user, 'following')} className="hover:opacity-80 transition-opacity">
-            <StatItem value={user.following?.toLocaleString() || '0'} label="Following" />
+          <button onClick={() => onOpenProfileStats(displayedUser, 'following')} className="hover:opacity-80 transition-opacity">
+            <StatItem value={displayedUser.following?.toLocaleString() || '0'} label="Following" />
           </button>
-          <button onClick={() => onOpenProfileStats(user, 'followers')} className="hover:opacity-80 transition-opacity">
-            <StatItem value={user.followers?.toLocaleString() || '0'} label="Followers" />
+          <button onClick={() => onOpenProfileStats(displayedUser, 'followers')} className="hover:opacity-80 transition-opacity">
+            <StatItem value={displayedUser.followers?.toLocaleString() || '0'} label="Followers" />
           </button>
-          <button onClick={() => onOpenProfileStats(user, 'likes')} className="hover:opacity-80 transition-opacity">
-            <StatItem value={(user.totalLikes || 0).toLocaleString()} label="Likes" />
+          <button onClick={() => onOpenProfileStats(displayedUser, 'likes')} className="hover:opacity-80 transition-opacity">
+            <StatItem value={(displayedUser.totalLikes || 0).toLocaleString()} label="Likes" />
           </button>
         </div>
 
@@ -115,18 +131,18 @@ const ProfileView: React.FC<ProfileViewProps> = ({ user, currentUser, isOwnProfi
           {isOwnProfile ? (
             <>
               <button onClick={onEditProfile} className="flex-1 py-2 bg-zinc-700 rounded-md font-semibold text-sm">Edit profile</button>
-              <button onClick={() => onShareProfile(user.username)} className="flex-1 py-2 bg-zinc-700 rounded-md font-semibold text-sm">Share profile</button>
+              <button onClick={() => onShareProfile(displayedUser.username)} className="flex-1 py-2 bg-zinc-700 rounded-md font-semibold text-sm">Share profile</button>
             </>
           ) : (
              <>
                 <button 
-                  onClick={() => onToggleFollow(user.id)} 
+                  onClick={handleFollowToggle} 
                   className={`flex-1 py-2 rounded-md font-semibold text-sm transition-colors ${isFollowing ? 'bg-zinc-700 text-white' : 'bg-pink-600 text-white'}`}
                 >
                     {isFollowing ? 'Following' : 'Follow'}
                 </button>
                 <button 
-                  onClick={() => alert(`Start chat with ${user.username}`)} 
+                  onClick={() => alert(`Start chat with ${displayedUser.username}`)} 
                   className="flex-1 py-2 bg-zinc-700 rounded-md font-semibold text-sm"
                 >
                     Message
@@ -159,7 +175,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({ user, currentUser, isOwnProfi
             </div>
         )}
 
-        {isOwnProfile && (user.role === 'creator' || user.role === 'admin') && (
+        {isOwnProfile && (displayedUser.role === 'creator' || displayedUser.role === 'admin') && (
           <div className="px-4 mt-4 grid grid-cols-2 gap-2">
             <button 
               onClick={() => onNavigate('creatorDashboard')}
@@ -178,7 +194,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({ user, currentUser, isOwnProfi
           </div>
         )}
 
-        {isOwnProfile && user.role === 'admin' && (
+        {isOwnProfile && displayedUser.role === 'admin' && (
           <div className="px-4 mt-2">
             <button 
               onClick={() => onNavigate('admin')}
@@ -233,7 +249,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({ user, currentUser, isOwnProfi
           )}
           {activeTab === 'badges' && (
               <div className="p-4 grid grid-cols-3 gap-4">
-                  {user.badges?.map(badge => (
+                  {displayedUser.badges?.map(badge => (
                       <div key={badge.id} className="flex flex-col items-center text-center p-2 bg-zinc-800 rounded-lg">
                           <span className="text-4xl">{badge.icon}</span>
                           <p className="text-xs font-semibold mt-1">{badge.name}</p>

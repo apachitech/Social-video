@@ -55,6 +55,7 @@ This single step provisions your database, storage, authentication, and serverle
         video_url TEXT NOT NULL,
         thumbnail_url TEXT,
         likes INT DEFAULT 0,
+        views INT DEFAULT 0,
         shares INT DEFAULT 0,
         status TEXT DEFAULT 'approved' NOT NULL,
         upload_date TIMESTAMPTZ DEFAULT now()

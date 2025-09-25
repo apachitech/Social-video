@@ -32,6 +32,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, isActive, onOpenCommen
   const qualityMenuRef = useRef<HTMLDivElement>(null);
   const [isPlaying, setIsPlaying] = useState(isActive);
   const [isLiked, setIsLiked] = useState(currentUser.likedVideoIds?.includes(video.id) ?? false);
+  const [likeCount, setLikeCount] = useState(video.likes);
   const [showPlayPause, setShowPlayPause] = useState(false);
   const [isShared, setIsShared] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
@@ -142,6 +143,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, isActive, onOpenCommen
   const handleLike = async () => {
       const currentlyLiked = isLiked;
       // Optimistically update UI
+      setLikeCount(prev => currentlyLiked ? prev - 1 : prev + 1);
       setIsLiked(!currentlyLiked);
 
       if (currentlyLiked) {
@@ -149,6 +151,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, isActive, onOpenCommen
           const { error } = await supabase.from('likes').delete().match({ user_id: currentUser.id, video_id: video.id });
           if (error) {
               console.error('Error unliking video:', error);
+              setLikeCount(prev => prev + 1); // Revert on error
               setIsLiked(true); // Revert on error
           }
       } else {
@@ -156,6 +159,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, isActive, onOpenCommen
           const { error } = await supabase.from('likes').insert({ user_id: currentUser.id, video_id: video.id });
           if (error) {
               console.error('Error liking video:', error);
+              setLikeCount(prev => prev - 1); // Revert on error
               setIsLiked(false); // Revert on error
           }
       }
@@ -460,7 +464,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, isActive, onOpenCommen
         <div className="flex flex-col items-center space-y-5">
             <button onClick={(e) => { e.stopPropagation(); handleLike(); }} className="flex flex-col items-center">
             <HeartIcon isFilled={isLiked} />
-            <span className="text-xs font-semibold mt-1">{video.likes + (isLiked ? 1 : 0)}</span>
+            <span className="text-xs font-semibold mt-1">{formatNumber(likeCount)}</span>
             </button>
             <button onClick={(e) => { e.stopPropagation(); onOpenComments(); }} className="flex flex-col items-center">
             <CommentIcon />
