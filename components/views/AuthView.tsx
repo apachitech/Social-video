@@ -1,5 +1,5 @@
 '''import React, { useState } from 'react';
-import { supabase } from '../../services/supabase';
+// import { supabase } from '../../services/supabase';
 import { GoogleIcon } from '../icons/Icons';
 
 interface AuthViewProps {
@@ -15,35 +15,38 @@ const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, siteName }) => {
   const [error, setError] = useState<string | null>(null);
 
   const handleLogin = async () => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      setError(error.message);
-    } else {
-      onLoginSuccess();
-    }
+    // const { error } = await supabase.auth.signInWithPassword({ email, password });
+    // if (error) {
+    //   setError(error.message);
+    // } else {
+    //   onLoginSuccess();
+    // }
+    console.log('Login clicked');
   };
 
   const handleSignUp = async () => {
-    if (password !== confirmPassword) {
-      setError('Passwords do not match');
-      return;
-    }
-    const { error } = await supabase.auth.signUp({ email, password });
-    if (error) {
-      setError(error.message);
-    } else {
-      // You might want to show a message to check email for confirmation
-      alert('Check your email for the confirmation link!');
-    }
+    // if (password !== confirmPassword) {
+    //   setError('Passwords do not match');
+    //   return;
+    // }
+    // const { error } = await supabase.auth.signUp({ email, password });
+    // if (error) {
+    //   setError(error.message);
+    // } else {
+    //   // You might want to show a message to check email for confirmation
+    //   alert('Check your email for the confirmation link!');
+    // }
+    console.log('Sign up clicked');
   };
 
   const handleGoogleLogin = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-    });
-    if (error) {
-      setError(error.message);
-    }
+    // const { error } = await supabase.auth.signInWithOAuth({
+    //   provider: 'google',
+    // });
+    // if (error) {
+    //   setError(error.message);
+    // }
+    console.log('Google login clicked');
   };
 
   return (
