@@ -1,6 +1,6 @@
 '''import React, { useState } from 'react';
 // import { supabase } from '../../services/supabase';
-import { GoogleIcon } from '../icons/Icons';
+import { GoogleIcon } from '../icons/Icons.tsx';
 
 interface AuthViewProps {
   onLoginSuccess: () => void;
