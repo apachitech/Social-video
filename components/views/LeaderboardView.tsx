@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { LeaderboardUser } from '../../types';
+import { mockTopGifters, mockTopEarners } from '../../services/mockApi';
 import { ChevronLeftIcon, CoinIcon } from '../icons/Icons';
 
 interface LeaderboardViewProps {
@@ -38,10 +39,6 @@ const LeaderboardRow: React.FC<{ item: LeaderboardUser; isCurrentUser: boolean }
 
 const LeaderboardView: React.FC<LeaderboardViewProps> = ({ onBack }) => {
   const [activeTab, setActiveTab] = useState<'gifters' | 'earners'>('gifters');
-
-  // In a real app, this data would be fetched from an API
-  const mockTopGifters: LeaderboardUser[] = [];
-  const mockTopEarners: LeaderboardUser[] = [];
 
   const data = activeTab === 'gifters' ? mockTopGifters : mockTopEarners;
   const title = activeTab === 'gifters' ? 'Top Gifters' : 'Top Earners';

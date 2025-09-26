@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Video, User, Ad } from '../types';
 import { HeartIcon, CommentIcon, ShareIcon, MusicIcon, PlayIcon, PauseIcon, FullScreenIcon, VolumeUpIcon, VolumeOffIcon, SettingsIcon } from './icons/Icons';
 import { getYouTubeEmbedUrl } from '../utils/videoUtils';
-import { supabase } from '../services/supabase';
 import AdBannerOverlay from './AdBannerOverlay';
 
 interface VideoPlayerProps {
@@ -30,9 +29,8 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, isActive, onOpenCommen
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const qualityMenuRef = useRef<HTMLDivElement>(null);
-  const [isPlaying, setIsPlaying] = useState(isActive);
-  const [isLiked, setIsLiked] = useState(currentUser.likedVideoIds?.includes(video.id) ?? false);
-  const [likeCount, setLikeCount] = useState(video.likes);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isLiked, setIsLiked] = useState(false);
   const [showPlayPause, setShowPlayPause] = useState(false);
   const [isShared, setIsShared] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
@@ -140,29 +138,8 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, isActive, onOpenCommen
     setTimeout(() => setShowPlayPause(false), 800);
   };
   
-  const handleLike = async () => {
-      const currentlyLiked = isLiked;
-      // Optimistically update UI
-      setLikeCount(prev => currentlyLiked ? prev - 1 : prev + 1);
-      setIsLiked(!currentlyLiked);
-
-      if (currentlyLiked) {
-          // Unlike
-          const { error } = await supabase.from('likes').delete().match({ user_id: currentUser.id, video_id: video.id });
-          if (error) {
-              console.error('Error unliking video:', error);
-              setLikeCount(prev => prev + 1); // Revert on error
-              setIsLiked(true); // Revert on error
-          }
-      } else {
-          // Like
-          const { error } = await supabase.from('likes').insert({ user_id: currentUser.id, video_id: video.id });
-          if (error) {
-              console.error('Error liking video:', error);
-              setLikeCount(prev => prev - 1); // Revert on error
-              setIsLiked(false); // Revert on error
-          }
-      }
+  const handleLike = () => {
+      setIsLiked(!isLiked);
   }
   
   const handleClickOnVideo = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -464,7 +441,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, isActive, onOpenCommen
         <div className="flex flex-col items-center space-y-5">
             <button onClick={(e) => { e.stopPropagation(); handleLike(); }} className="flex flex-col items-center">
             <HeartIcon isFilled={isLiked} />
-            <span className="text-xs font-semibold mt-1">{formatNumber(likeCount)}</span>
+            <span className="text-xs font-semibold mt-1">{video.likes + (isLiked ? 1 : 0)}</span>
             </button>
             <button onClick={(e) => { e.stopPropagation(); onOpenComments(); }} className="flex flex-col items-center">
             <CommentIcon />

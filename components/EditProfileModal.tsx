@@ -3,37 +3,26 @@ import React, { useState, useRef } from 'react';
 import { User } from '../types';
 // Fix: Correct import for Icons which is now created.
 import { CloseIcon } from './icons/Icons';
-import { supabase } from '../services/supabase';
 
 interface EditProfileModalProps {
   user: User;
   onSave: (updatedUser: User) => void;
   onClose: () => void;
-  showSuccessToast: (message: string) => void;
 }
 
-const EditProfileModal: React.FC<EditProfileModalProps> = ({ user, onSave, onClose, showSuccessToast }) => {
+const EditProfileModal: React.FC<EditProfileModalProps> = ({ user, onSave, onClose }) => {
   const [username, setUsername] = useState(user.username);
   const [bio, setBio] = useState(user.bio);
   const [avatar, setAvatar] = useState<string>(user.avatarUrl);
-  const [isSaving, setIsSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleSave = async () => {
-    setIsSaving(true);
-    const { data, error } = await supabase
-        .from('profiles')
-        .update({ username, bio, avatar_url: avatar })
-        .eq('id', user.id)
-        .select()
-        .single();
-
-    if (error) {
-        showSuccessToast(`Error: ${error.message}`);
-    } else if (data) {
-        onSave(data as User);
-    }
-    setIsSaving(false);
+  const handleSave = () => {
+    onSave({
+      ...user,
+      username,
+      bio,
+      avatarUrl: avatar,
+    });
   };
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -102,8 +91,8 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ user, onSave, onClo
             <button onClick={onClose} className="px-4 py-2 rounded-md bg-zinc-700 hover:bg-zinc-600 transition-colors font-semibold">
               Cancel
             </button>
-            <button onClick={handleSave} disabled={isSaving} className="px-4 py-2 rounded-md bg-pink-600 hover:bg-pink-700 transition-colors font-semibold disabled:opacity-50">
-              {isSaving ? 'Saving...' : 'Save Changes'}
+            <button onClick={handleSave} className="px-4 py-2 rounded-md bg-pink-600 hover:bg-pink-700 transition-colors font-semibold">
+              Save Changes
             </button>
           </div>
         </div>

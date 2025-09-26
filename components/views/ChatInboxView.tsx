@@ -1,5 +1,6 @@
 import React from 'react';
 import { Conversation, User } from '../../types';
+// Fix: Correct import for Icons which is now created.
 import { ChevronLeftIcon } from '../icons/Icons';
 
 interface ChatInboxViewProps {

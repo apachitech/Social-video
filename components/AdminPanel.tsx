@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { User, Video, Report, PayoutRequest, Gift, MonetizationSettings, CreatorApplication, CoinPack, DailyRewardSettings, Ad, AdSettings, Badge, Task, TaskSettings } from '../types';
-import { supabase } from '../services/supabase';
+import { mockUsers, mockVideos, mockReports, mockPayoutRequests, mockGifts, mockAds, mockBadges, mockTasks } from '../services/mockApi';
 import { DashboardIcon, UsersIcon, VideoIcon, ShieldCheckIcon, DollarSignIcon, GiftIcon, RestoreIcon, SettingsIcon, LogOutIcon, ProfileIcon, StarIcon, MegaphoneIcon, BadgeIcon, TasksIcon } from './icons/Icons';
 import DashboardView from './admin/DashboardView';
 import UserManagementView from './admin/UserManagementView';
@@ -17,12 +17,6 @@ import BadgeManagementView from './admin/BadgeManagementView';
 import TaskManagementView from './admin/TaskManagementView';
 
 interface AdminPanelProps {
-  // Data that should be fetched from the API
-  allUsers: User[];
-  allVideos: Video[];
-  allReports: Report[];
-  allPayouts: PayoutRequest[];
-
   user: User;
   onExit: () => void;
   onSendSystemMessage: (userId: string, message: string) => void;
@@ -51,7 +45,7 @@ interface AdminPanelProps {
 type AdminView = 'dashboard' | 'users' | 'content' | 'moderation' | 'financials' | 'gifts' | 'verification' | 'corbeil' | 'settings' | 'creatorApps' | 'ads' | 'badges' | 'tasks';
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ 
-    allUsers, allVideos, allReports, allPayouts, user, onExit, onSendSystemMessage, showSuccessToast, monetizationSettings, setMonetizationSettings,
+    user, onExit, onSendSystemMessage, showSuccessToast, monetizationSettings, setMonetizationSettings,
     creatorApplications, onCreatorApplicationDecision, onLogout, coinPacks, setCoinPacks,
     dailyRewardSettings, setDailyRewardSettings, ads, setAds, adSettings, setAdSettings,
     tasks, setTasks, taskSettings, setTaskSettings, siteName, setSiteName
@@ -73,12 +67,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const [isAnimating, setIsAnimating] = useState(false);
 
   // This would be state from a global store/API in a real app
-  const [users, setUsers] = useState<User[]>(allUsers);
-  const [videos, setVideos] = useState<Video[]>(allVideos);
-  const [reports, setReports] = useState<Report[]>(allReports);
-  const [payouts, setPayouts] = useState<PayoutRequest[]>(allPayouts);
-  const [gifts, setGifts] = useState<Gift[]>([]);
-  const [badges, setBadges] = useState<Badge[]>([]); // TODO: Pass badges as props
+  const [users, setUsers] = useState<User[]>(mockUsers);
+  const [videos, setVideos] = useState<Video[]>(mockVideos);
+  const [reports, setReports] = useState<Report[]>(mockReports);
+  const [payouts, setPayouts] = useState<PayoutRequest[]>(mockPayoutRequests);
+  const [gifts, setGifts] = useState<Gift[]>(mockGifts);
+  const [badges, setBadges] = useState<Badge[]>(mockBadges);
   const [deletedUsers, setDeletedUsers] = useState<User[]>([]);
 
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
@@ -93,16 +87,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     accountRestored: "Welcome back, {username}! Your account has been restored and is now active.",
     payoutRejected: "Your recent payout request for ${amount} has been rejected. Please contact support for more details."
   });
-
-  useEffect(() => {
-    const fetchGifts = async () => {
-        const { data, error } = await supabase.from('gifts').select('*').order('price', { ascending: true });
-        if (error) {
-            showSuccessToast(`Error fetching gifts: ${error.message}`);
-        } else setGifts(data as Gift[]);
-    };
-    fetchGifts();
-  }, [showSuccessToast]);
 
   useEffect(() => {
     document.documentElement.classList.add('dark');
@@ -166,66 +150,48 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   };
   
   // User Management Handlers
-  const handleUpdateUserStatus = async (userId: string, status: User['status']) => {
+  const handleUpdateUserStatus = (userId: string, status: User['status']) => {
       const userToUpdate = users.find(u => u.id === userId);
       if (!userToUpdate) return;
       
-      const { error } = await supabase.from('profiles').update({ status }).eq('id', userId);
-
-      if (error) {
-          showSuccessToast(`Error: ${error.message}`);
-      } else {
-          setUsers(users.map(u => u.id === userId ? { ...u, status } : u));
-          
-          let message = '';
-          if (status === 'suspended') {
-              message = formatSystemMessage(notificationTemplates.accountSuspended, userToUpdate);
-          } else if (status === 'banned') {
-               message = formatSystemMessage(notificationTemplates.accountBanned, userToUpdate);
-          } else if (status === 'active') {
-              message = formatSystemMessage(notificationTemplates.accountRestored, userToUpdate);
-          }
-          
-          if (message) onSendSystemMessage(userId, message);
-          showSuccessToast(`User status updated to '${status}'.`);
+      setUsers(users.map(u => u.id === userId ? { ...u, status } : u));
+      
+      let message = '';
+      if (status === 'suspended') {
+          message = formatSystemMessage(notificationTemplates.accountSuspended, userToUpdate);
+      } else if (status === 'banned') {
+           message = formatSystemMessage(notificationTemplates.accountBanned, userToUpdate);
+      } else if (status === 'active') {
+          message = formatSystemMessage(notificationTemplates.accountRestored, userToUpdate);
       }
+      
+      if (message) onSendSystemMessage(userId, message);
+      showSuccessToast(`User status updated to '${status}'.`);
   };
   
-  const handleUpdateUserRole = async (userId: string, role: User['role']) => {
+  const handleUpdateUserRole = (userId: string, role: User['role']) => {
     const userToUpdate = users.find(u => u.id === userId);
     if (!userToUpdate) return;
 
-    const { error } = await supabase.from('profiles').update({ role }).eq('id', userId);
-
-    if (error) {
-        showSuccessToast(`Error: ${error.message}`);
-    } else {
-        setUsers(users.map(u => u.id === userId ? { ...u, role } : u));
-        showSuccessToast(`@${userToUpdate.username}'s role updated to '${role}'.`);
-    }
+    setUsers(users.map(u => u.id === userId ? { ...u, role } : u));
+    showSuccessToast(`@${userToUpdate.username}'s role updated to '${role}'.`);
   };
 
-  const handleBulkUpdateUserStatus = async (ids: string[], status: User['status']) => {
-      const { error } = await supabase.from('profiles').update({ status }).in('id', ids);
+  const handleBulkUpdateUserStatus = (ids: string[], status: User['status']) => {
+      setUsers(users.map(u => ids.includes(u.id) ? { ...u, status } : u));
+      
+      ids.forEach(id => {
+          const userToUpdate = users.find(u => u.id === id);
+          if (!userToUpdate) return;
+          let message = '';
+          if (status === 'suspended') message = formatSystemMessage(notificationTemplates.accountSuspended, userToUpdate);
+          else if (status === 'banned') message = formatSystemMessage(notificationTemplates.accountBanned, userToUpdate);
+          else if (status === 'active') message = formatSystemMessage(notificationTemplates.accountRestored, userToUpdate);
+          if (message) onSendSystemMessage(id, message);
+      });
 
-      if (error) {
-          showSuccessToast(`Error: ${error.message}`);
-      } else {
-          setUsers(users.map(u => ids.includes(u.id) ? { ...u, status } : u));
-          
-          ids.forEach(id => {
-              const userToUpdate = users.find(u => u.id === id);
-              if (!userToUpdate) return;
-              let message = '';
-              if (status === 'suspended') message = formatSystemMessage(notificationTemplates.accountSuspended, userToUpdate);
-              else if (status === 'banned') message = formatSystemMessage(notificationTemplates.accountBanned, userToUpdate);
-              else if (status === 'active') message = formatSystemMessage(notificationTemplates.accountRestored, userToUpdate);
-              if (message) onSendSystemMessage(id, message);
-          });
-
-          showSuccessToast(`${ids.length} users updated to '${status}'.`);
-          setSelectedUserIds([]);
-      }
+      showSuccessToast(`${ids.length} users updated to '${status}'.`);
+      setSelectedUserIds([]);
   };
   
   const handleUpdateUserVerification = (userId: string, isVerified: boolean) => {
@@ -245,38 +211,27 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     showSuccessToast(`Badges updated for user.`);
   };
 
-  const handleUpdatePayoutStatus = async (payoutId: string, status: 'approved' | 'rejected') => {
+  const handleUpdatePayoutStatus = (payoutId: string, status: 'approved' | 'rejected') => {
       const payoutToUpdate = payouts.find(p => p.id === payoutId);
       if (!payoutToUpdate) return;
       
-      const { error } = await supabase
-        .from('payout_requests')
-        .update({ status, processed_date: new Date().toISOString() })
-        .eq('id', payoutId);
-
-      if (error) {
-          showSuccessToast(`Error: ${error.message}`);
-      } else {
-          setPayouts(payouts.map(p => p.id === payoutId ? { ...p, status, processedDate: new Date().toISOString().split('T')[0] } : p));
-          
-          if (status === 'rejected') {
-              // In a real app, you'd have a Supabase Edge Function to handle this transactionally.
-              // For now, we simulate the refund on the client side.
-              const userToRefund = users.find(u => u.id === payoutToUpdate.user.id);
-              if (userToRefund) {
-                  const updatedUser = {
-                      ...userToRefund,
-                      creatorStats: {
-                          ...(userToRefund.creatorStats!),
-                          totalEarnings: (userToRefund.creatorStats?.totalEarnings ?? 0) + payoutToUpdate.amount,
-                      }
+      setPayouts(payouts.map(p => p.id === payoutId ? { ...p, status, processedDate: new Date().toISOString().split('T')[0] } : p));
+      
+      if (status === 'rejected') {
+          const userToRefund = users.find(u => u.id === payoutToUpdate.user.id);
+          if (userToRefund) {
+              const updatedUser = {
+                  ...userToRefund,
+                  creatorStats: {
+                      ...(userToRefund.creatorStats!),
+                      totalEarnings: (userToRefund.creatorStats?.totalEarnings ?? 0) + payoutToUpdate.amount,
                   }
-                  setUsers(users.map(u => u.id === userToRefund.id ? updatedUser : u));
-                  onSendSystemMessage(payoutToUpdate.user.id, formatSystemMessage(notificationTemplates.payoutRejected, payoutToUpdate.user, { amount: payoutToUpdate.amount.toFixed(2) }));
-              }
+              };
+              setUsers(users.map(u => u.id === userToRefund.id ? updatedUser : u));
+              onSendSystemMessage(payoutToUpdate.user.id, formatSystemMessage(notificationTemplates.payoutRejected, payoutToUpdate.user, { amount: payoutToUpdate.amount.toFixed(2) }));
           }
-          showSuccessToast(`Payout ${payoutId} has been ${status}.`);
       }
+      showSuccessToast(`Payout ${payoutId} has been ${status}.`);
   };
 
   const handleAddUser = (newUser: User) => {
@@ -284,34 +239,23 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     showSuccessToast(`User @${newUser.username} created.`);
   };
 
-  const handleDeleteUser = async (userId: string) => {
+  const handleDeleteUser = (userId: string) => {
       const userToDelete = users.find(u => u.id === userId);
       if (userToDelete) {
-          // This just moves them to the 'deleted' state. Permanent deletion requires backend logic.
-          const { error } = await supabase.from('profiles').update({ status: 'deleted' }).eq('id', userId);
-          if (error) {
-              showSuccessToast(`Error: ${error.message}`);
-          } else {
-              const deletedUser = { ...userToDelete, status: 'deleted' as const, deletionDate: new Date().toISOString() };
-              setDeletedUsers(prev => [deletedUser, ...prev]);
-              setUsers(users.filter(u => u.id !== userId));
-              showSuccessToast(`User @${userToDelete.username} moved to corbeil.`);
-          }
+          const deletedUser = { ...userToDelete, status: 'deleted' as const, deletionDate: new Date().toISOString() };
+          setDeletedUsers(prev => [deletedUser, ...prev]);
+          setUsers(users.filter(u => u.id !== userId));
+          showSuccessToast(`User @${userToDelete.username} moved to corbeil.`);
       }
   };
   
-  const handleBulkDeleteUsers = async (ids: string[]) => {
-      const { error } = await supabase.from('profiles').update({ status: 'deleted' }).in('id', ids);
-      if (error) {
-          showSuccessToast(`Error: ${error.message}`);
-      } else {
-          const usersToDelete = users.filter(u => ids.includes(u.id));
-          const deletedToAdd = usersToDelete.map(u => ({ ...u, status: 'deleted' as const, deletionDate: new Date().toISOString() }));
-          setDeletedUsers(prev => [...deletedToAdd, ...prev]);
-          setUsers(users.filter(u => !ids.includes(u.id)));
-          showSuccessToast(`${ids.length} users moved to corbeil.`);
-          setSelectedUserIds([]);
-      }
+  const handleBulkDeleteUsers = (ids: string[]) => {
+      const usersToDelete = users.filter(u => ids.includes(u.id));
+      const deletedToAdd = usersToDelete.map(u => ({ ...u, status: 'deleted' as const, deletionDate: new Date().toISOString() }));
+      setDeletedUsers(prev => [...deletedToAdd, ...prev]);
+      setUsers(users.filter(u => !ids.includes(u.id)));
+      showSuccessToast(`${ids.length} users moved to corbeil.`);
+      setSelectedUserIds([]);
   };
 
    const handleBulkSendMessage = (userIds: string[], message: string) => {
@@ -320,149 +264,82 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       setSelectedUserIds([]);
   };
 
-  const handleRestoreUser = async (userId: string) => {
+  const handleRestoreUser = (userId: string) => {
       const userToRestore = deletedUsers.find(u => u.id === userId);
       if (userToRestore) {
-          const { error } = await supabase.from('profiles').update({ status: 'active' }).eq('id', userId);
-          if (error) {
-              showSuccessToast(`Error: ${error.message}`);
-          } else {
-              const restoredUser = { ...userToRestore, status: 'active' as const, deletionDate: undefined };
-              setUsers(prev => [restoredUser, ...prev]);
-              setDeletedUsers(deletedUsers.filter(u => u.id !== userId));
-              showSuccessToast(`User @${userToRestore.username} restored.`);
-          }
+          const restoredUser = { ...userToRestore, status: 'active' as const, deletionDate: undefined };
+          setUsers(prev => [restoredUser, ...prev]);
+          setDeletedUsers(deletedUsers.filter(u => u.id !== userId));
+          showSuccessToast(`User @${userToRestore.username} restored.`);
       }
   };
 
-  const handlePermanentlyDeleteUser = async (userId: string) => {
-      // This is a dangerous operation and should ideally be an edge function
-      // that also calls supabase.auth.admin.deleteUser(userId).
-      // For the UI, we'll just remove from the 'deleted' state.
-      const { error } = await supabase.from('profiles').delete().eq('id', userId);
-      if (error) showSuccessToast(`Error: ${error.message}`);
+  const handlePermanentlyDeleteUser = (userId: string) => {
       setDeletedUsers(deletedUsers.filter(u => u.id !== userId));
       showSuccessToast(`User permanently deleted.`);
   };
 
   // Video Management Handlers
-  const handleUpdateVideoStatus = async (videoId: string, status: Video['status']) => {
-      const { error } = await supabase.from('videos').update({ status }).eq('id', videoId);
-      if (error) {
-          showSuccessToast(`Error: ${error.message}`);
-      } else {
-          setVideos(videos.map(v => v.id === videoId ? { ...v, status } : v));
-          showSuccessToast(`Video status updated to '${status}'.`);
-      }
+  const handleUpdateVideoStatus = (videoId: string, status: Video['status']) => {
+      setVideos(videos.map(v => v.id === videoId ? { ...v, status } : v));
+      showSuccessToast(`Video status updated to '${status}'.`);
   };
-  const handleDeleteVideo = async (videoId: string) => {
-      // Note: This should also delete the file from Supabase Storage in a real app,
-      // likely via an Edge Function triggered by the DB delete.
-      const { error } = await supabase.from('videos').delete().eq('id', videoId);
-      if (error) {
-          showSuccessToast(`Error: ${error.message}`);
-      } else {
-          setVideos(videos.filter(v => v.id !== videoId));
-          showSuccessToast(`Video permanently deleted.`);
-      }
+  const handleDeleteVideo = (videoId: string) => {
+      setVideos(videos.filter(v => v.id !== videoId));
+      showSuccessToast(`Video permanently deleted.`);
   };
-   const handleBulkUpdateVideoStatus = async (ids: string[], status: Video['status']) => {
-      const { error } = await supabase.from('videos').update({ status }).in('id', ids);
-      if (error) {
-          showSuccessToast(`Error: ${error.message}`);
-      } else {
-          setVideos(videos.map(v => ids.includes(v.id) ? { ...v, status } : v));
-          showSuccessToast(`${ids.length} videos updated to '${status}'.`);
-          setSelectedVideoIds([]);
-      }
+   const handleBulkUpdateVideoStatus = (ids: string[], status: Video['status']) => {
+      setVideos(videos.map(v => ids.includes(v.id) ? { ...v, status } : v));
+      showSuccessToast(`${ids.length} videos updated to '${status}'.`);
+      setSelectedVideoIds([]);
   };
-  const handleBulkDeleteVideos = async (ids: string[]) => {
-      const { error } = await supabase.from('videos').delete().in('id', ids);
-      if (error) {
-          showSuccessToast(`Error: ${error.message}`);
-      } else {
-          setVideos(videos.filter(v => !ids.includes(v.id)));
-          showSuccessToast(`${ids.length} videos permanently deleted.`);
-          setSelectedVideoIds([]);
-      }
+  const handleBulkDeleteVideos = (ids: string[]) => {
+      setVideos(videos.filter(v => !ids.includes(v.id)));
+      showSuccessToast(`${ids.length} videos permanently deleted.`);
+      setSelectedVideoIds([]);
   };
 
   // Moderation Handlers
-    const handleResolveReport = async (report: Report) => {
-        const { error } = await supabase.from('reports').update({ status: 'resolved' }).eq('id', report.id);
-        if (error) {
-            showSuccessToast(`Error: ${error.message}`);
-        } else {
-            setReports(reports.map(r => r.id === report.id ? { ...r, status: 'resolved' } : r));
-            // Take action on the content
-            if (report.contentType === 'video') {
-                await handleUpdateVideoStatus(report.contentId, 'removed');
-            } else if (report.contentType === 'user') {
-                await handleUpdateUserStatus(report.contentId, 'suspended');
-            }
-            showSuccessToast(`Report ${report.id} resolved.`);
+    const handleResolveReport = (report: Report) => {
+        setReports(reports.map(r => r.id === report.id ? { ...r, status: 'resolved' } : r));
+        // Take action on the content
+        if (report.contentType === 'video') {
+            handleUpdateVideoStatus(report.contentId, 'removed');
+        } else if (report.contentType === 'user') {
+            handleUpdateUserStatus(report.contentId, 'suspended');
         }
+        showSuccessToast(`Report ${report.id} resolved.`);
     };
-  const handleDismissReport = async (reportId: string) => {
-      const { error } = await supabase.from('reports').update({ status: 'dismissed' }).eq('id', reportId);
-      if (error) {
-          showSuccessToast(`Error: ${error.message}`);
-      } else {
-          setReports(reports.map(r => r.id === reportId ? { ...r, status: 'dismissed' } : r));
-          showSuccessToast(`Report ${reportId} dismissed.`);
-      }
+  const handleDismissReport = (reportId: string) => {
+      setReports(reports.map(r => r.id === reportId ? { ...r, status: 'dismissed' } : r));
+      showSuccessToast(`Report ${reportId} dismissed.`);
   };
-  const handleBulkResolveReports = async (ids: string[]) => {
-        // This is simplified. A real implementation would use an Edge Function
-        // to transactionally update reports and their related content.
-        for (const id of ids) {
+  const handleBulkResolveReports = (ids: string[]) => {
+        ids.forEach(id => {
             const report = reports.find(r => r.id === id);
-            if(report) await handleResolveReport(report);
-        }
+            if(report) handleResolveReport(report);
+        });
         showSuccessToast(`${ids.length} reports resolved.`);
         setSelectedReportIds([]);
   };
-  const handleBulkDismissReports = async (ids: string[]) => {
-        const { error } = await supabase.from('reports').update({ status: 'dismissed' }).in('id', ids);
-        if (error) {
-            showSuccessToast(`Error: ${error.message}`);
-        } else {
-            setReports(reports.map(r => ids.includes(r.id) ? { ...r, status: 'dismissed' } : r));
-            showSuccessToast(`${ids.length} reports dismissed.`);
-            setSelectedReportIds([]);
-        }
+  const handleBulkDismissReports = (ids: string[]) => {
+        setReports(reports.map(r => ids.includes(r.id) ? { ...r, status: 'dismissed' } : r));
+        showSuccessToast(`${ids.length} reports dismissed.`);
+        setSelectedReportIds([]);
   };
 
   // Gift Handlers
-  const handleAddGift = async (gift: Omit<Gift, 'id'>) => {
-    const { data, error } = await supabase.from('gifts').insert(gift).select().single();
-    if (error) {
-        showSuccessToast(`Error: ${error.message}`);
-    } else {
-        setGifts(prev => [data as Gift, ...prev]);
-        showSuccessToast(`Gift '${data.name}' added.`);
-    }
+  const handleAddGift = (gift: Gift) => {
+    setGifts([gift, ...gifts]);
+    showSuccessToast(`Gift '${gift.name}' added.`);
   };
-  const handleUpdateGift = async (updatedGift: Gift) => {
-    const { data, error } = await supabase.from('gifts').update(updatedGift).eq('id', updatedGift.id).select().single();
-    if (error) {
-        showSuccessToast(`Error: ${error.message}`);
-    } else {
-        setGifts(gifts.map(g => g.id === updatedGift.id ? (data as Gift) : g));
-        showSuccessToast(`Gift '${updatedGift.name}' updated.`);
-    }
+  const handleUpdateGift = (updatedGift: Gift) => {
+    setGifts(gifts.map(g => g.id === updatedGift.id ? updatedGift : g));
+    showSuccessToast(`Gift '${updatedGift.name}' updated.`);
   };
-  const handleDeleteGift = async (giftId: string) => {
-    const giftToDelete = gifts.find(g => g.id === giftId);
-    if (!giftToDelete) return;
-
-    const { error } = await supabase.from('gifts').delete().eq('id', giftId);
-    if (error) {
-        showSuccessToast(`Error: ${error.message}`);
-    } else {
-        setGifts(gifts.filter(g => g.id !== giftId));
-        showSuccessToast(`Gift '${giftToDelete.name}' deleted.`);
-    }
+  const handleDeleteGift = (giftId: string) => {
+    setGifts(gifts.filter(g => g.id !== giftId));
+    showSuccessToast(`Gift deleted.`);
   };
 
   const renderView = () => {

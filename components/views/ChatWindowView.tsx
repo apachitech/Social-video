@@ -1,17 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Conversation, User } from '../../types';
 import { ChevronLeftIcon, SendIcon, PaperclipIcon, EmojiIcon, CloseIcon } from '../icons/Icons';
+import { mockUser } from '../../services/mockApi';
 import EmojiPicker from '../EmojiPicker';
 
 interface ChatWindowViewProps {
   conversation: Conversation;
-  currentUser: User;
   onBack: () => void;
   onSendMessage: (text: string, imageFile?: File) => void;
   onViewProfile: (user: User) => void;
 }
 
-const ChatWindowView: React.FC<ChatWindowViewProps> = ({ conversation, currentUser, onBack, onSendMessage, onViewProfile }) => {
+const ChatWindowView: React.FC<ChatWindowViewProps> = ({ conversation, onBack, onSendMessage, onViewProfile }) => {
   const [newMessage, setNewMessage] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -33,14 +33,14 @@ const ChatWindowView: React.FC<ChatWindowViewProps> = ({ conversation, currentUs
   // Typing indicator simulation
   useEffect(() => {
     const lastMessage = conversation.messages[conversation.messages.length - 1];
-    if (lastMessage && lastMessage.senderId !== currentUser.id) {
+    if (lastMessage && lastMessage.senderId !== mockUser.id) {
       setIsTyping(true);
       const timer = setTimeout(() => {
         setIsTyping(false);
       }, 1500 + Math.random() * 1000); // Simulate typing for 1.5-2.5 seconds
       return () => clearTimeout(timer);
     }
-  }, [conversation.messages, currentUser.id]);
+  }, [conversation.messages]);
 
   // Click away to close emoji picker
   useEffect(() => {
@@ -111,7 +111,7 @@ const ChatWindowView: React.FC<ChatWindowViewProps> = ({ conversation, currentUs
       
       <main className="flex-1 overflow-y-auto p-4 space-y-4">
         {conversation.messages.map((msg) => {
-          const isCurrentUser = msg.senderId === currentUser.id;
+          const isCurrentUser = msg.senderId === mockUser.id;
           return (
             <div key={msg.id} className={`flex items-end gap-2 ${isCurrentUser ? 'justify-end' : 'justify-start'}`}>
               {!isCurrentUser && (

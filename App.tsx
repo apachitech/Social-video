@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 // FIX: Added UploadSource to the import list from types.ts to support different upload methods.
-import { User, Video, LiveStream, WalletTransaction, Conversation, ChatMessage, Comment, PayoutRequest, MonetizationSettings, UploadSource, CreatorApplication, CoinPack, SavedPaymentMethod, DailyRewardSettings, Ad, AdSettings, Task, TaskSettings, Report, Wallet, Gift } from './types';
-import { systemUser, mockAds } from './services/mockApi';
-import { supabase } from './services/supabase';
+import { User, Video, LiveStream, WalletTransaction, Conversation, ChatMessage, Comment, PayoutRequest, MonetizationSettings, UploadSource, CreatorApplication, CoinPack, SavedPaymentMethod, DailyRewardSettings, Ad, AdSettings, Task, TaskSettings } from './types';
+import { mockUser, mockUsers, mockVideos, mockLiveStreams, mockConversations, systemUser, mockPayoutRequests, mockCreatorApplications, mockAds, mockTasks } from './services/mockApi';
 import { getCurrencyInfoForLocale, CurrencyInfo } from './utils/currency';
 import { CurrencyContext } from './contexts/CurrencyContext';
 
@@ -42,6 +41,8 @@ import TasksView from './components/views/TasksView';
 import WatchAdModal from './components/WatchAdModal';
 
 export type View = 'feed' | 'live' | 'inbox' | 'profile' | 'wallet' | 'settings' | 'purchase' | 'admin' | 'creatorDashboard' | 'manageAccount' | 'changePassword' | 'helpCenter' | 'termsOfService' | 'becomeCreator' | 'paymentMethods' | 'tasks';
+
+const API_URL = 'https://vidora-3dvn.onrender.com/api/v1';
 
 const defaultMonetizationSettings: MonetizationSettings = {
     currencySymbol: '$',
@@ -102,17 +103,14 @@ const defaultTaskSettings: TaskSettings = {
 
 
 const App: React.FC = () => {
-    // Auth state is now handled by Supabase, so isLoggedIn is derived from currentUser
+    const [isLoggedIn, setIsLoggedIn] = useState(false);
     const [currentUser, setCurrentUser] = useState<User | null>(null);
-    const [wallet, setWallet] = useState<Wallet | null>(null);
-    const [users, setUsers] = useState<User[]>([]);
+    const [users, setUsers] = useState<User[]>(mockUsers);
     const [videos, setVideos] = useState<Video[]>([]);
-    const [liveStreams, setLiveStreams] = useState<LiveStream[]>([]);
-    const [conversations, setConversations] = useState<Conversation[]>([]);
-    const [payoutRequests, setPayoutRequests] = useState<PayoutRequest[]>([]);
-    const [reports, setReports] = useState<Report[]>([]);
-    const [creatorApplications, setCreatorApplications] = useState<CreatorApplication[]>([]);
-    const [gifts, setGifts] = useState<Gift[]>([]);
+    const [liveStreams, setLiveStreams] = useState<LiveStream[]>(mockLiveStreams);
+    const [conversations, setConversations] = useState<Conversation[]>(mockConversations);
+    const [payoutRequests, setPayoutRequests] = useState<PayoutRequest[]>(mockPayoutRequests);
+    const [creatorApplications, setCreatorApplications] = useState<CreatorApplication[]>(mockCreatorApplications);
     
     const [activeView, setActiveView] = useState<View>('feed');
     const [previousView, setPreviousView] = useState<View>('feed');
@@ -207,9 +205,6 @@ const App: React.FC = () => {
             return saved ? JSON.parse(saved) : mockAds;
         } catch (error) {
             console.error("Could not parse ads from localStorage", error);
-            // If parsing fails, it's likely due to corrupted data.
-            // Clear the bad data and fall back to the default mock ads.
-            localStorage.removeItem('ads');
             return mockAds;
         }
     });
@@ -239,10 +234,10 @@ const App: React.FC = () => {
     const [tasks, setTasks] = useState<Task[]>(() => {
         try {
             const saved = localStorage.getItem('tasks');
-            return saved ? JSON.parse(saved) : [];
+            return saved ? JSON.parse(saved) : mockTasks;
         } catch (error) {
             console.error("Could not parse tasks from localStorage", error);
-            return [];
+            return mockTasks;
         }
     });
 
@@ -257,111 +252,23 @@ const App: React.FC = () => {
     });
 
     useEffect(() => {
-        // --- 1. SETUP AUTH LISTENER ---
-        // Listen for authentication state changes (login, logout)
-        const { data: authListener } = supabase.auth.onAuthStateChange(
-            async (event, session) => {
-                const user = session?.user ?? null;
-                // The user object from Supabase Auth doesn't have our custom profile data
-                // so we fetch it from the 'profiles' table.
-                if (user) {
-                    const { data: profile, error } = await supabase
-                        .from('profiles')
-                        .select('*')
-                        .eq('id', user.id)
-                        .single();
+        const loggedIn = sessionStorage.getItem('isLoggedIn') === 'true';
+        if (loggedIn) {
+            setCurrentUser(mockUser);
+            setVideos(mockVideos);
+            setIsLoggedIn(true);
 
-                    // Fetch following IDs for the logged-in user
-                    const { data: followingData, error: followingError } = await supabase
-                        .from('followers')
-                        .select('following_id')
-                        .eq('follower_id', user.id);
-
-                    if (followingError) console.error('Error fetching following list:', followingError);
-
-                    // Also fetch the user's wallet data
-                    const { data: walletData, error: walletError } = await supabase
-                        .from('wallets')
-                        .select('*, transactions(*, order(timestamp, desc))')
-                        .eq('user_id', user.id)
-                        .single();
-                    
-                    if (error) {
-                        console.error('Error fetching user profile:', error);
-                        setCurrentUser(null);
-                        setWallet(null);
-                    } else if (walletError) {
-                        console.error('Error fetching user wallet:', walletError);
-                        // Set user but indicate wallet issue
-                        setCurrentUser(profile as User);
-                        setWallet(null);
-                    } else {
-                        // Combine profile with following IDs
-                        const userProfile = profile as User;
-                        userProfile.followingIds = followingData?.map(f => f.following_id) || [];
-
-                        setCurrentUser(userProfile);
-                        setWallet(walletData as Wallet);
-
-                        // Check for daily reward on login
-                        const lastClaimed = localStorage.getItem('lastRewardClaim');
-                        const today = new Date().toISOString().split('T')[0];
-                        if (dailyRewardSettings.isEnabled && lastClaimed !== today) {
-                            setTimeout(() => setIsDailyRewardOpen(true), 1000);
-                        }
-                    }
-                } else {
-                    setCurrentUser(null);
-                    setWallet(null);
-                }
+            const lastClaimed = localStorage.getItem('lastRewardClaim');
+            const today = new Date().toISOString().split('T')[0];
+            if (dailyRewardSettings.isEnabled && lastClaimed !== today) {
+                setTimeout(() => setIsDailyRewardOpen(true), 1000);
             }
-        );
-
-        // --- 2. FETCH INITIAL DATA ---
-        const fetchData = async () => {
-            // Fetch public data concurrently
-            const [videosRes, usersRes, reportsRes, payoutsRes, giftsRes] = await Promise.all([
-              supabase
-              .from('videos')
-              .select('*, profile:profiles(username, avatar_url)') // Correctly join profiles table
-              .order('upload_date', { ascending: false }),
-              supabase.from('profiles').select('*'), // Fetch all users for admin panel, etc.
-              supabase.from('reports').select('*, reportedBy:profiles!reported_by_fkey(username, avatar_url)'), // Example join
-              supabase.from('payout_requests').select('*, user:profiles!user_id_fkey(username, avatar_url)'), // Example join
-              supabase.from('gifts').select('*').eq('is_active', true).order('price', { ascending: true }),
-            ]);
-
-            if (videosRes.error) {
-              console.error('Error fetching videos:', videosRes.error);
-            } else {
-              // The join returns `profile` object, let's map it to `user` to match the component's expectation
-              const formattedVideos = videosRes.data.map(v => ({...v, user: v.profile}));
-              setVideos(formattedVideos as any);
-            }
-
-            if (usersRes.error) console.error('Error fetching users:', usersRes.error);
-            else setUsers(usersRes.data as User[]);
-
-            if (reportsRes.error) console.error('Error fetching reports:', reportsRes.error);
-            else setReports(reportsRes.data as any);
-
-            if (payoutsRes.error) console.error('Error fetching payouts:', payoutsRes.error);
-            else setPayoutRequests(payoutsRes.data as any);
-
-            if (giftsRes.error) console.error('Error fetching gifts:', giftsRes.error);
-            else setGifts(giftsRes.data as Gift[]);
-        };
-
-        fetchData();
+        }
         
         // Detect user locale and set currency info
         const info = getCurrencyInfoForLocale(navigator.language);
         setCurrencyInfo(info);
 
-        // --- 3. CLEANUP ---
-        return () => {
-            authListener.subscription.unsubscribe();
-        };
     }, []);
 
     useEffect(() => {
@@ -455,19 +362,18 @@ const App: React.FC = () => {
         );
     }, [currentUser, tasks, taskSettings]);
 
-    const handleLogin = async () => {
-        // This function is now just for showing the AuthView.
-        // The actual login logic will be handled inside AuthView using Supabase.
-        // For simplicity, we'll just navigate to the feed after a successful login
-        // which is handled by the onAuthStateChange listener.
+    const handleLogin = () => {
+        sessionStorage.setItem('isLoggedIn', 'true');
+        setCurrentUser(mockUser);
+        setVideos(mockVideos);
+        setIsLoggedIn(true);
         setActiveView('feed');
     };
 
-    const handleLogout = async () => {
-        const { error } = await supabase.auth.signOut();
-        if (error) {
-            console.error('Error logging out:', error);
-        }
+    const handleLogout = () => {
+        sessionStorage.removeItem('isLoggedIn');
+        setCurrentUser(null);
+        setIsLoggedIn(false);
     };
 
     const handleNavigate = (view: View) => {
@@ -524,47 +430,27 @@ const App: React.FC = () => {
         handleCloseUpload();
 
         if (source.type === 'file') {
-            const file = source.data;
-            const fileName = `${currentUser.id}/${Date.now()}`;
-            
             showSuccessToast('Uploading your video...');
-            
-            // 1. Upload the file to Supabase Storage
-            const { error: uploadError } = await supabase.storage
-              .from('media') // The name of your bucket
-              .upload(fileName, file);
+            const formData = new FormData();
+            formData.append('video', source.data);
+            formData.append('description', description);
 
-            if (uploadError) {
-              console.error('Error uploading video:', uploadError);
-              showSuccessToast('Error: Could not upload video.');
-              return;
-            }
+            try {
+                const response = await fetch(`${API_URL}/videos/upload`, {
+                    method: 'POST',
+                    body: formData,
+                });
 
-            // 2. Get the public URL of the uploaded file
-            const { data } = supabase.storage
-              .from('media')
-              .getPublicUrl(fileName);
-            
-            const publicUrl = data.publicUrl;
+                if (!response.ok) {
+                    throw new Error('Upload failed');
+                }
 
-            // 3. Save the video metadata to your database
-            const { data: newVideo, error: dbError } = await supabase
-              .from('videos')
-              .insert({
-                user_id: currentUser.id, // This should now be the UUID from Supabase Auth
-                description,
-                video_url: publicUrl,
-                thumbnail_url: '...' // Placeholder
-              })
-              .select('*, profile:profiles(username, avatar_url)') // Re-fetch with profile data
-              .single(); // We expect one record back
-            
-            if (dbError) {
-                console.error('Error saving video to DB:', dbError);
-                showSuccessToast('Error: Could not save video.');
-            } else if (newVideo) {
-                setVideos(prev => [newVideo as any, ...prev]);
+                const newVideo: Video = await response.json();
+                setVideos(prev => [newVideo, ...prev]);
                 showSuccessToast('Video uploaded successfully!');
+            } catch (error) {
+                console.error('Error uploading video:', error);
+                showSuccessToast('Error: Could not upload video.');
             }
         } else { // source.type === 'url'
             showSuccessToast('Embedding your video...');
@@ -604,37 +490,31 @@ const App: React.FC = () => {
         const videoId = activeVideoForComments.id;
 
         try {
-            const { data: newComment, error } = await supabase
-                .from('comments')
-                .insert({
-                    text: commentText,
-                    user_id: currentUser.id,
-                    video_id: videoId,
-                })
-                .select('*, profile:profiles(username, avatar_url)') // Join with profiles
-                .single();
+            const response = await fetch(`${API_URL}/videos/${videoId}/comments`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: commentText, userId: currentUser.id }),
+            });
 
-            if (error) throw error;
+            if (!response.ok) throw new Error('Failed to post comment');
             
-            if (newComment) {
-                // Map the returned `profile` object to `user` for consistency
-                const formattedComment = {...newComment, user: newComment.profile};
-                const updatedVideos = videos.map(v => {
-                    if (v.id === videoId) {
-                        const updatedVideo = {
-                            ...v,
-                            comments: v.comments + 1,
-                            commentsData: [formattedComment as any, ...v.commentsData],
-                        };
-                        // Also update the video in the modal state to show the new comment instantly
-                        setActiveVideoForComments(updatedVideo);
-                        return updatedVideo;
-                    }
-                    return v;
-                });
+            const newComment: Comment = await response.json();
+            
+            const updatedVideos = videos.map(v => {
+                if (v.id === videoId) {
+                    const updatedVideo = {
+                        ...v,
+                        comments: v.comments + 1,
+                        commentsData: [newComment, ...v.commentsData],
+                    };
+                    // Also update the video in the modal state to show the new comment instantly
+                    setActiveVideoForComments(updatedVideo);
+                    return updatedVideo;
+                }
+                return v;
+            });
 
-                setVideos(updatedVideos);
-            }
+            setVideos(updatedVideos);
 
         } catch (error) {
             console.error('Error adding comment:', error);
@@ -642,45 +522,56 @@ const App: React.FC = () => {
         }
     };
 
-    const handleToggleFollow = async (userIdToToggle: string) => {
+    const handleToggleFollow = (userIdToToggle: string) => {
         if (!currentUser) return;
 
         const isCurrentlyFollowing = currentUser.followingIds?.includes(userIdToToggle);
-        
-        // Optimistically update the UI first for a snappy user experience
-        const updatedFollowingIds = isCurrentlyFollowing
-            ? currentUser.followingIds?.filter(id => id !== userIdToToggle)
-            : [...(currentUser.followingIds || []), userIdToToggle];
-        
-        setCurrentUser({ ...currentUser, followingIds: updatedFollowingIds });
 
-        if (isCurrentlyFollowing) {
-            // --- Unfollow Logic ---
-            const { error } = await supabase
-                .from('followers')
-                .delete()
-                .eq('follower_id', currentUser.id)
-                .eq('following_id', userIdToToggle);
-            
-            if (error) {
-                console.error("Error unfollowing:", error);
-                // Revert optimistic update on error
-                setCurrentUser({ ...currentUser, followingIds: currentUser.followingIds });
-                showSuccessToast('Error: Could not unfollow user.');
-            } else {
-                showSuccessToast(`Unfollowed!`);
+        // Update the main source of truth: the users array
+        const updatedUsers = users.map(u => {
+            // Update the user being followed/unfollowed
+            if (u.id === userIdToToggle) {
+                const currentFollowers = u.followers || 0;
+                return { ...u, followers: isCurrentlyFollowing ? currentFollowers - 1 : currentFollowers + 1 };
             }
-        } else {
-            // --- Follow Logic ---
-            const { error } = await supabase.from('followers').insert({ follower_id: currentUser.id, following_id: userIdToToggle });
-            if (error) {
-                console.error("Error following:", error);
-                setCurrentUser({ ...currentUser, followingIds: currentUser.followingIds });
-                showSuccessToast('Error: Could not follow user.');
-            } else {
-                showSuccessToast(`Followed!`);
+            // Update the current user who is doing the following/unfollowing
+            if (u.id === currentUser.id) {
+                const updatedFollowingIds = isCurrentlyFollowing
+                    ? u.followingIds?.filter(id => id !== userIdToToggle) || []
+                    : [...(u.followingIds || []), userIdToToggle];
+                return { ...u, followingIds: updatedFollowingIds, following: updatedFollowingIds.length };
+            }
+            return u;
+        });
+        setUsers(updatedUsers);
+
+        // Sync other state slices from the updated users array
+        const updatedCurrentUser = updatedUsers.find(u => u.id === currentUser.id);
+        if (updatedCurrentUser) {
+            setCurrentUser(updatedCurrentUser);
+        }
+        
+        if (viewedProfileUser) {
+            const updatedViewedUser = updatedUsers.find(u => u.id === viewedProfileUser.id);
+            if (updatedViewedUser) {
+                setViewedProfileUser(updatedViewedUser);
             }
         }
+        
+        if (profileStatsModalState) {
+            const updatedModalUser = updatedUsers.find(u => u.id === profileStatsModalState.user.id);
+            if (updatedModalUser) {
+                setProfileStatsModalState(prev => prev ? {...prev, user: updatedModalUser} : null);
+            }
+        }
+
+        // Update videos array which has its own user objects
+        setVideos(prevVideos => prevVideos.map(video => {
+            const updatedVideoUser = updatedUsers.find(u => u.id === video.user.id);
+            return updatedVideoUser ? { ...video, user: updatedVideoUser } : video;
+        }));
+        
+        showSuccessToast(isCurrentlyFollowing ? `Unfollowed!` : `Followed!`);
     };
 
     const handleShareVideo = (videoId: string) => {
@@ -722,7 +613,7 @@ const App: React.FC = () => {
     };
 
     const handleEditProfile = () => {
-        setIsEditProfileOpen(true); // This just opens the modal
+        setIsEditProfileOpen(true);
     };
 
     const handleSaveProfile = (updatedUser: User) => {
@@ -775,52 +666,27 @@ const App: React.FC = () => {
     };
 
     const handlePurchaseComplete = (amount: number, description: string) => {
-        if (!currentUser || !wallet) return;
+        if (!currentUser || !currentUser.wallet) return;
 
-        // In a real production app, this logic MUST be in a secure backend function (e.g., a Supabase Edge Function)
-        // that is triggered by a webhook from your payment provider (e.g., Stripe).
-        // Never trust the client to update its own balance.
-        // For this prototype, we perform the update on the client to make the UI functional.
-        const performPurchase = async () => {
-            const newBalance = wallet.balance + amount;
-
-            // 1. Update the wallet balance
-            const { error: walletError } = await supabase
-                .from('wallets')
-                .update({ balance: newBalance })
-                .eq('user_id', currentUser.id);
-
-            if (walletError) throw walletError;
-
-            // 2. Insert the transaction record
-            const { data: newTransaction, error: transactionError } = await supabase
-                .from('transactions')
-                .insert({
-                    user_id: currentUser.id,
-                    type: 'purchase',
-                    amount: amount,
-                    description: `Purchased ${description}`,
-                })
-                .select()
-                .single();
-            
-            if (transactionError) throw transactionError;
-
-            // 3. Update local state
-            setWallet({
-                ...wallet,
-                balance: newBalance,
-                transactions: [newTransaction as WalletTransaction, ...wallet.transactions],
-            });
-
-            showSuccessToast('Purchase successful!');
-            handleNavigate('wallet');
+         const newTransaction: WalletTransaction = {
+            id: `tx-purchase-${Date.now()}`,
+            type: 'purchase',
+            amount,
+            description: `Purchased ${description}`,
+            timestamp: new Date().toISOString()
         };
 
-        performPurchase().catch(error => {
-            console.error("Purchase failed:", error);
-            showSuccessToast("Error: Purchase could not be completed.");
-        });
+        const updatedUser = {
+            ...currentUser,
+            wallet: {
+                ...currentUser.wallet,
+                balance: currentUser.wallet.balance + amount,
+                transactions: [newTransaction, ...currentUser.wallet.transactions]
+            }
+        };
+        setCurrentUser(updatedUser);
+        showSuccessToast('Purchase successful!');
+        handleNavigate('wallet');
     };
 
     const handleStartTask = (task: Task) => {
@@ -828,43 +694,44 @@ const App: React.FC = () => {
     };
 
     const handleCompleteTask = (task: Task) => {
-        if (!currentUser || !wallet) return;
+        if (!currentUser || !currentUser.wallet) return;
 
+        const updatedUser = { ...currentUser };
         const rewardAmount = task.rewardAmount;
 
-        const completeTaskTransaction = async () => {
-            if (task.rewardType === 'coins') {
-                const newBalance = wallet.balance + rewardAmount;
-                // Update wallet and insert transaction
-                await supabase.from('wallets').update({ balance: newBalance }).eq('user_id', currentUser.id);
-                const { data: newTransaction } = await supabase.from('transactions').insert({
-                    user_id: currentUser.id,
-                    type: 'task',
-                    amount: rewardAmount,
-                    description: `Reward for: ${task.title}`,
-                }).select().single();
+        if (task.rewardType === 'coins') {
+            const newTransaction: WalletTransaction = {
+                id: `tx-task-${Date.now()}`,
+                type: 'task',
+                amount: rewardAmount,
+                description: `Reward for: ${task.title}`,
+                timestamp: new Date().toISOString(),
+            };
+            updatedUser.wallet = {
+                ...updatedUser.wallet,
+                balance: updatedUser.wallet.balance + rewardAmount,
+                transactions: [newTransaction, ...(updatedUser.wallet.transactions || [])]
+            };
+        } else if (task.rewardType === 'xp') {
+            updatedUser.xp = (updatedUser.xp || 0) + rewardAmount;
+        }
 
-                // Update local state
-                setWallet(prev => prev ? { ...prev, balance: newBalance, transactions: [newTransaction, ...prev.transactions] } : null);
-            } else if (task.rewardType === 'xp') {
-                const newXp = (currentUser.xp || 0) + rewardAmount;
-                await supabase.from('profiles').update({ xp: newXp }).eq('id', currentUser.id);
-                setCurrentUser(prev => prev ? { ...prev, xp: newXp } : null);
-            }
-
-            // Update completed tasks locally
-            const updatedCompletedTasks = { ...(currentUser.completedTasks || {}), [task.id]: new Date().toISOString() };
-            setCurrentUser(prev => prev ? { ...prev, completedTasks: updatedCompletedTasks } : null);
-
-            setTaskToWatch(null);
-            showSuccessToast(`+${rewardAmount} ${task.rewardType} earned!`);
-            sendSystemMessage(currentUser.id, `You completed the task '${task.title}' and earned ${rewardAmount} ${task.rewardType}!`);
+        // FIX: Explicitly handle the case where a user has no prior task history.
+        // This ensures the `completedTasks` object is initialized before we try to add a new task to it,
+        // preventing an error that would stop the function before the reward is saved.
+        const currentTasks = updatedUser.completedTasks || {};
+        updatedUser.completedTasks = {
+            ...currentTasks,
+            [task.id]: new Date().toISOString(),
         };
 
-        completeTaskTransaction().catch(error => {
-            console.error("Failed to complete task:", error);
-            showSuccessToast("Error: Could not complete task.");
-        });
+        setCurrentUser(updatedUser);
+        setTaskToWatch(null);
+        showSuccessToast(`+${rewardAmount} ${task.rewardType} earned!`);
+        
+        // Send a confirmation message to the user's inbox
+        const confirmationMessage = `You completed the task '${task.title}' and earned ${rewardAmount} ${task.rewardType}!`;
+        sendSystemMessage(currentUser.id, confirmationMessage);
     };
 
     const handleSelectConversation = (conversationId: string) => {
@@ -1040,6 +907,27 @@ const App: React.FC = () => {
         }, 1500);
     };
 
+    const handleChangePassword = (currentPassword: string, newPassword: string): boolean => {
+        // In a real app, this would be an API call.
+        // For this mock app, we'll simulate the logic.
+        if (currentPassword !== 'password123') { // Mocking the current password
+          showSuccessToast("Error: Current password is incorrect.");
+          // In a real app, the ChangePasswordView would handle this error state.
+          // For simplicity, we just show a toast here.
+          return false; // Indicate failure
+        }
+        
+        // Here you would send the new password to the backend.
+        console.log('Password successfully changed.');
+        showSuccessToast('Password updated successfully!');
+        // A short delay to let the user see the toast before navigating
+        setTimeout(() => {
+            handleNavigate('manageAccount');
+        }, 1500);
+    
+        return true; // Indicate success
+    };
+    
     const handleSetCommentPrivacySetting = (setting: 'everyone' | 'following' | 'nobody') => {
         if (!currentUser) return;
         const updatedUser = {
@@ -1188,8 +1076,8 @@ const App: React.FC = () => {
     };
 
 
-    if (!currentUser) {
-        return <AuthView siteName={siteName} />;
+    if (!isLoggedIn || !currentUser) {
+        return <AuthView onLoginSuccess={handleLogin} siteName={siteName} />;
     }
 
     if (activeView === 'admin') {
@@ -1197,10 +1085,6 @@ const App: React.FC = () => {
             <CurrencyContext.Provider value={formatWithConversion}>
                 <AdminPanel 
                     user={currentUser} 
-                    allUsers={users}
-                    allVideos={videos}
-                    allReports={reports}
-                    allPayouts={payoutRequests}
                     onExit={() => handleNavigate('profile')} 
                     onSendSystemMessage={sendSystemMessage}
                     showSuccessToast={showSuccessToast} 
@@ -1258,7 +1142,6 @@ const App: React.FC = () => {
                     bannerAds={activeAds.filter(ad => ad.placement === 'live_stream_banner')}
                     liveStreams={liveStreams}
                     onBanStreamer={handleBanStreamer}
-                    availableGifts={gifts}
                     hasIncompleteDailyTasks={hasIncompleteDailyTasks}
                     onNavigate={handleNavigate}
                 />;
@@ -1301,7 +1184,7 @@ const App: React.FC = () => {
                             hasIncompleteDailyTasks={hasIncompleteDailyTasks}
                         />;
             case 'wallet':
-                return <WalletView wallet={wallet} onBack={() => handleNavigate('profile')} onNavigateToPurchase={handleNavigateToPurchase} coinPacks={coinPacks} onNavigate={handleNavigate} />;
+                return <WalletView user={currentUser} onBack={() => handleNavigate('profile')} onNavigateToPurchase={handleNavigateToPurchase} coinPacks={coinPacks} onNavigate={handleNavigate} />;
             case 'settings':
                 return <SettingsView 
                             onBack={() => handleNavigate('profile')} 
@@ -1330,7 +1213,7 @@ const App: React.FC = () => {
             case 'changePassword':
                 return <ChangePasswordView
                             onBack={() => handleNavigate('manageAccount')}
-                            showSuccessToast={showSuccessToast}
+                            onChangePassword={handleChangePassword}
                         />;
             case 'helpCenter':
                 return <HelpCenterView onBack={() => handleNavigate('settings')} onNavigate={handleNavigate} />;
@@ -1386,7 +1269,7 @@ const App: React.FC = () => {
                 )}
 
                 {isUploadViewOpen && <UploadView onUpload={handleUpload} onClose={handleCloseUpload} />}
-                {isEditProfileOpen && <EditProfileModal user={currentUser} onSave={handleSaveProfile} onClose={() => setIsEditProfileOpen(false)} showSuccessToast={showSuccessToast} />}
+                {isEditProfileOpen && <EditProfileModal user={currentUser} onSave={handleSaveProfile} onClose={() => setIsEditProfileOpen(false)} />}
                 {isDailyRewardOpen && <DailyRewardModal 
                     streakCount={currentUser.streakCount || 0} 
                     onClaim={handleClaimReward} 
@@ -1458,6 +1341,8 @@ const App: React.FC = () => {
                         user={profileStatsModalState.user}
                         initialTab={profileStatsModalState.initialTab}
                         currentUser={currentUser}
+                        allUsers={users}
+                        allVideos={videos}
                         onClose={handleCloseProfileStats}
                         onToggleFollow={handleToggleFollow}
                         onViewProfile={(userToView) => {

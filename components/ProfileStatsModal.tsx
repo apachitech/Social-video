@@ -1,8 +1,7 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { User, Video } from '../types';
 import { CloseIcon, SearchIcon } from './icons/Icons';
-import { supabase } from '../services/supabase';
 
 type Tab = 'followers' | 'following' | 'likes';
 
@@ -10,6 +9,8 @@ interface ProfileStatsModalProps {
     user: User;
     initialTab: Tab;
     currentUser: User;
+    allUsers: User[];
+    allVideos: Video[];
     onClose: () => void;
     onToggleFollow: (userId: string) => void;
     onViewProfile: (user: User) => void;
@@ -49,46 +50,14 @@ const UserListItem: React.FC<{
 };
 
 const ProfileStatsModal: React.FC<ProfileStatsModalProps> = ({
-    user, initialTab, currentUser, onClose, onToggleFollow, onViewProfile, onOpenProfileVideoFeed
+    user, initialTab, currentUser, allUsers, allVideos, onClose, onToggleFollow, onViewProfile, onOpenProfileVideoFeed
 }) => {
     const [activeTab, setActiveTab] = useState<Tab>(initialTab);
-    const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
-    const [followersList, setFollowersList] = useState<User[]>([]);
-    const [followingList, setFollowingList] = useState<User[]>([]);
-    const [likedVideosList, setLikedVideosList] = useState<Video[]>([]);
 
-    useEffect(() => {
-        const fetchData = async () => {
-            setIsLoading(true);
-            if (activeTab === 'followers') {
-                const { data, error } = await supabase
-                    .from('followers')
-                    .select('follower:profiles!follower_id(*)')
-                    .eq('following_id', user.id);
-                if (error) console.error('Error fetching followers:', error);
-                else setFollowersList(data?.map(d => d.follower) as User[] || []);
-            } else if (activeTab === 'following') {
-                const { data, error } = await supabase
-                    .from('followers')
-                    .select('following:profiles!following_id(*)')
-                    .eq('follower_id', user.id);
-                if (error) console.error('Error fetching following:', error);
-                else setFollowingList(data?.map(d => d.following) as User[] || []);
-            } else if (activeTab === 'likes') {
-                const { data, error } = await supabase
-                    .from('likes')
-                    .select('video:videos!inner(*, profile:profiles(username, avatar_url))')
-                    .eq('user_id', user.id)
-                    .order('created_at', { ascending: false });
-                if (error) console.error('Error fetching liked videos:', error);
-                else setLikedVideosList(data?.map(d => d.video) as Video[] || []);
-            }
-            setIsLoading(false);
-        };
-
-        fetchData();
-    }, [user.id, activeTab]);
+    const followingList = useMemo(() => allUsers.filter(u => user.followingIds?.includes(u.id)), [allUsers, user.followingIds]);
+    const followersList = useMemo(() => allUsers.filter(u => u.followingIds?.includes(user.id)), [allUsers, user.id]);
+    const likedVideosList = useMemo(() => allVideos.filter(v => user.likedVideoIds?.includes(v.id)), [allVideos, user.likedVideoIds]);
 
     const filteredUsers = useMemo(() => {
         const listToFilter = activeTab === 'followers' ? followersList : followingList;
@@ -112,15 +81,6 @@ const ProfileStatsModal: React.FC<ProfileStatsModalProps> = ({
                 </div>
             );
         }
-
-        if (isLoading) {
-            return <div className="text-center p-8 text-gray-400">Loading...</div>;
-        }
-
-        if (filteredUsers.length === 0 && !searchTerm) {
-            return <div className="text-center p-8 text-gray-400">No users to show.</div>;
-        }
-
         return (
             <div className="p-2 space-y-1">
                 {filteredUsers.map(u => (
@@ -148,18 +108,18 @@ const ProfileStatsModal: React.FC<ProfileStatsModalProps> = ({
                 
                 <nav className="flex-shrink-0 flex border-b border-zinc-700">
                     <button onClick={() => setActiveTab('followers')} className={`flex-1 py-3 text-sm font-semibold ${activeTab === 'followers' ? 'border-b-2 border-white text-white' : 'text-gray-400'}`}>
-                        {isLoading && activeTab !== 'followers' ? user.followers : followersList.length} Followers
+                        {user.followers} Followers
                     </button>
                     <button onClick={() => setActiveTab('following')} className={`flex-1 py-3 text-sm font-semibold ${activeTab === 'following' ? 'border-b-2 border-white text-white' : 'text-gray-400'}`}>
-                        {isLoading && activeTab !== 'following' ? user.following : followingList.length} Following
+                        {user.following} Following
                     </button>
                     <button onClick={() => setActiveTab('likes')} className={`flex-1 py-3 text-sm font-semibold ${activeTab === 'likes' ? 'border-b-2 border-white text-white' : 'text-gray-400'}`}>
-                        {isLoading && activeTab !== 'likes' ? user.totalLikes : likedVideosList.length} Likes
+                        {user.totalLikes} Likes
                     </button>
                 </nav>
 
                 {activeTab !== 'likes' && (
-                    <div className="flex-shrink-0 p-2 border-b border-zinc-700">
+                    <div className="flex-shrink-0 p-2">
                         <div className="relative">
                             <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                             <input
