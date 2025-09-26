@@ -4,6 +4,8 @@ import { User, Video, LiveStream, WalletTransaction, Conversation, ChatMessage, 
 import { mockUser, mockUsers, mockVideos, mockLiveStreams, mockConversations, systemUser, mockPayoutRequests, mockCreatorApplications, mockAds, mockTasks } from './services/mockApi';
 import { getCurrencyInfoForLocale, CurrencyInfo } from './utils/currency';
 import { CurrencyContext } from './contexts/CurrencyContext';
+import { supabase } from './services/supabase';
+import { Session } from '@supabase/supabase-js';
 
 import AuthView from './components/views/AuthView';
 import FeedView from './components/views/FeedView';
@@ -252,23 +254,53 @@ const App: React.FC = () => {
     });
 
     useEffect(() => {
-        const loggedIn = sessionStorage.getItem('isLoggedIn') === 'true';
-        if (loggedIn) {
-            setCurrentUser(mockUser);
-            setVideos(mockVideos);
-            setIsLoggedIn(true);
-
-            const lastClaimed = localStorage.getItem('lastRewardClaim');
-            const today = new Date().toISOString().split('T')[0];
-            if (dailyRewardSettings.isEnabled && lastClaimed !== today) {
-                setTimeout(() => setIsDailyRewardOpen(true), 1000);
+        const getSessionAndProfile = async () => {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session) {
+            const { data: profile, error } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', session.user.id)
+              .single();
+            
+            if (error) {
+              console.error('Error fetching profile:', error);
+            } else {
+              setCurrentUser(profile);
+              setIsLoggedIn(true);
             }
-        }
-        
+          }
+        };
+
+        getSessionAndProfile();
+
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+          if (session) {
+            const { data: profile, error } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', session.user.id)
+              .single();
+            
+            if (error) {
+              console.error('Error fetching profile:', error);
+              setCurrentUser(null);
+              setIsLoggedIn(false);
+            } else {
+              setCurrentUser(profile);
+              setIsLoggedIn(true);
+            }
+          } else {
+            setCurrentUser(null);
+            setIsLoggedIn(false);
+          }
+        });
+
         // Detect user locale and set currency info
         const info = getCurrencyInfoForLocale(navigator.language);
         setCurrencyInfo(info);
 
+        return () => subscription.unsubscribe();
     }, []);
 
     useEffect(() => {
@@ -363,17 +395,13 @@ const App: React.FC = () => {
     }, [currentUser, tasks, taskSettings]);
 
     const handleLogin = () => {
-        sessionStorage.setItem('isLoggedIn', 'true');
-        setCurrentUser(mockUser);
-        setVideos(mockVideos);
-        setIsLoggedIn(true);
+        // AuthView now handles login, this is called on success
+        // The onAuthStateChange listener will update the session
         setActiveView('feed');
     };
 
-    const handleLogout = () => {
-        sessionStorage.removeItem('isLoggedIn');
-        setCurrentUser(null);
-        setIsLoggedIn(false);
+    const handleLogout = async () => {
+        await supabase.auth.signOut();
     };
 
     const handleNavigate = (view: View) => {
