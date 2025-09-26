@@ -1,4 +1,4 @@
-'''import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { supabase } from '@/services/supabase';
 import { GoogleIcon } from '@/components/icons/Icons';
 
@@ -120,4 +120,4 @@ const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, siteName }) => {
   );
 };
 
-export default AuthView;'''
+export default AuthView;
